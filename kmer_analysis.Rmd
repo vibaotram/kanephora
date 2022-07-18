@@ -313,6 +313,7 @@ library(lfmm)
 library(psych)
 library(car)
 library(GGally)
+library(viridis)
 ```
 
 Below is a trial on a random k-mer set (batch 415) of the african data
@@ -342,7 +343,13 @@ dev.off()
 
 
 ```{r}
-ggpairs(test_clim, columns = 1:4, aes(color = snp_group))
+test_clim$snp_group <- factor(test_clim$snp_group, levels = c("ER", "OB", "C", "AG", "D", "hb"))
+ggpairs(test_clim, columns = 1:4, aes(color = snp_group)) + 
+  scale_color_manual(values = c(turbo(5), "gray")) +
+  scale_fill_manual(values = c(turbo(5), "gray")) +
+  theme_minimal() +
+  theme(panel.background = element_rect(color = "gray"))
+ggsave("gea/climate_correlation_groups_gg.svg", width = 8, height = 8)
 ```
 
 ### genotype 
