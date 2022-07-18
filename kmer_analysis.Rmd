@@ -311,6 +311,8 @@ dev.off()
 ```{r}
 library(lfmm)
 library(psych)
+library(car)
+library(GGally)
 ```
 
 Below is a trial on a random k-mer set (batch 415) of the african data
@@ -325,12 +327,23 @@ clim <- clim %>% column_to_rownames("Label")
 
 the correlation of the climatic data (only the "annual" variables)
 ```{r}
-test_clim <- clim[, c(1,3,7,12)]
+test_clim <- clim[, c(1,3,7,12, ncol(clim))]
 svg("/data/projects/rob/data/kmers/gea/climate_correlation.svg")
-pairs.panels(test_clim, hist.col = "royalblue", ellipses = F, pch = c(1:9)[as.factor(clim$kasp_group)])
+pairs.panels(test_clim, hist.col = "royalblue", ellipses = F, pch = c(0:5)[as.factor(clim$snp_group)])
+legend(1, pch = c(0:5), legend = levels(as.factor(clim$snp_group)))
 dev.off()
 ```
 
+```{r}
+svg("/data/projects/rob/data/kmers/gea/climate_correlation_groups.svg")
+scatterplotMatrix(test_clim, groups = clim$snp_group)
+dev.off()
+```
+
+
+```{r}
+ggpairs(test_clim, columns = 1:4, aes(color = snp_group))
+```
 
 ### genotype 
 ```{r}
