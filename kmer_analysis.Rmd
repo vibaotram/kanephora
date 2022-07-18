@@ -1,0 +1,347 @@
+---
+title: "kmer analysis"
+author: "Tram"
+date: "6/13/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(BEDMatrix)
+library(readr)
+library(LEA)
+library(vcfR)
+library(tidyverse)
+library(data.table)
+```
+
+```{r, eval=FALSE}
+setwd("/data/projects/rob/scripts/kmer")
+```
+
+
+# Objectives:  
+1. detect k-mers under selection (associated with population structure)
+2. detect k-mers associated to local climate
+
+# Methods: 
+1. run Kiss on the african set (55 inds) -> confirm genetic structure with SNPs using snmf
+
+2. run Kiss on the whole set (55 AF + 45 VN) -> select k-mers using 2 statistical methods
+
+3. GEA
+
+
+## Test Kiss on the african set
+
+### choose a random k-mer set
+
+```{r}
+set.seed(123)
+rand_set <- sample(1:1728, 1) # 415
+bed_nb <- rand_set%/%100 # 4
+range_nb <- rand_set%%100 # 15
+
+scratch_dir <- "/scratch/kmer/af_kiss/results_ci2"
+tmp_dir <- "./tmp/af_ci2"
+```
+-> batch 4, subset 15
+
+###  download the corresponding bed file and kmer list file from /scratch
+```{bash}
+ssh node25
+rsync -vaurRP /scratch/kmer/af_kiss/results_ci2/./3.TABLE2BED/output_file.4.* /data/projects/rob/scripts/kmer/tmp/af_ci2
+rsync -vaurRP  /scratch/kmer/af_kiss/results_ci2/./5.RANGES/output_file.4/15.txt /data/projects/rob/scripts/kmer/tmp/af_ci2
+rsync -vaurRP  /scratch/kmer/af_kiss/results_ci2/./6.PCADAPT/output_file.4_15_BH0.05.pcadapt.rplot.pdf /data/projects/rob/scripts/kmer/tmp/af_ci2
+```
+
+
+### read the files
+```{r}
+bed_file <- file.path(tmp_dir, "3.TABLE2BED/output_file.4.bed")
+matrix <- BEDMatrix(bed_file)
+
+bim_file <- file.path(tmp_dir, "3.TABLE2BED/output_file.4.bim")
+bim <- read_delim(bim_file, delim = "\t", col_names = F)
+
+kmer_file <- file.path(tmp_dir, "5.RANGES/output_file.4/15.txt")
+kl <- scan(kmer_file)
+
+kmer_names_list=sort(kl) # kmer number by segment
+submat <- matrix[, sort(kl)]
+
+af_sample_file <- "/data/projects/rob/scripts/kiss/af_sample_name.txt"
+af_sample <- read.delim(af_sample_file)
+
+af_kiss_file <- "/data/projects/rob/scripts/kiss/af_sample.txt"
+af_kiss <- read.delim(af_kiss_file)
+
+af_sample <- left_join(af_kiss %>% select(accession_id), af_sample)
+```
+
+
+
+
+### run snmf on the randomly selected kmer set
+```{r}
+## SNMF
+snmf_dir <- file.path(tmp_dir, "snmf")
+dir.create(snmf_dir, showWarnings = F)
+geno_file <- file.path(snmf_dir, "kmer.geno")
+write.geno(submat, geno_file)
+
+snmf_kmer <- snmf(geno_file, K = 1:10, CPU = 2, repetitions = 10, project = "new", entropy = T, seed = 987654321)
+
+plot(snmf_kmer, pch = 16)
+
+## best k = 5
+## choose best run based on cross entropy
+k <- 5
+best_run <- which.min(cross.entropy(snmf_kmer, K = k))
+
+## plot ancestry proportion
+ind_order <- barchart(snmf_kmer, K = k, run = best_run, plot = F)
+kmer_ref_prop <- as.data.frame(Q(snmf_kmer, K = k, run = best_run))
+kmer_ref_prop$Label <- paste(af_sample$accession_id, af_sample$phenotype_value, sep = "_")
+kmer_ref_prop$prior <- factor(af_sample$phenotype_value, levels = c("ER", "OB", "C", "AG", "D"))
+kmer_ref_prop <- pivot_longer(kmer_ref_prop, cols = V1:V5, names_to = "ancestry", values_to = "proportion")
+## rename ancestry
+repre <- kmer_ref_prop %>% group_by(ancestry) %>% arrange(desc(proportion)) %>% slice_head(n = 1) %>% slice_tail(n = 1)
+# rename_ancestr <- sapply(repre$ancestry, function(i) af_sample$phenotype_value[af_sample$accession_id == repre$Label[repre$ancestry == i]])
+# levels(prop$ancestry) <- repre$prior
+
+kmer_ref_prop$Label <- factor(kmer_ref_prop$Label, levels = unique(kmer_ref_prop$Label)[ind_order$order], ordered = F)
+kmer_ref_prop$ancestry <- sapply(kmer_ref_prop$ancestry, function(i) repre$prior[repre$ancestry == i], USE.NAMES = F)
+
+ggplot(kmer_ref_prop) +
+  geom_col(aes(x = Label, y = proportion, fill = ancestry), position = position_stack(), width = .95, size = 0) + 
+  # scale_fill_viridis_d(end = .9)+
+  scale_fill_manual(values = turbo(5)) +
+  scale_x_discrete(expand = c(0,0)) +
+  scale_y_continuous(expand = c(0, 0)) +
+  ylab("Ancestry proportion")  +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 90, size = 10, hjust = 1),
+    axis.title.y = element_text(size = 12),
+    # axis.title.x = element_blank(),
+    legend.text = element_text(size = 12),
+    legend.title = element_text(size = 12),
+    legend.key.size = unit(5, "mm"),
+    axis.ticks.y = element_line(size = .1),
+    axis.text.y = element_text(size = 8),
+    panel.spacing = unit(2, "mm"),
+    # strip.text.x = element_text(angle = 90, size = 10, hjust = 1)
+    ) 
+```
+
+
+### run snmf on window-based SNPs
+
+```{bash}
+rsync -vaurP baotram@core.cluster.france-bioinformatique.fr:/shared/projects/most_kmer/vcf_bgi_2021/gbp_output/filtered_vcf_by_chrom/all_final_thin5000_maf002.recode.vcf /data/projects/rob/scripts/kmer/tmp
+
+rsync -vaurP /scratch/kmer/all_kiss/6.PCADAPT/output_file.10_3_BH0.05.pcadapt.rplot.pdf  /data/projects/rob/scripts/kmer/tmp/all
+```
+
+```{r}
+vcf_file <- "/data/projects/rob/scripts/kmer/tmp/all_final_thin5000_maf002.recode.vcf"
+vcf_header <- scanBcfHeader(vcf_file)
+ind_names <- vcf_header[[1]]@listData$Sample
+ref_names <- grep("(S-|TR)", ind_names, invert = T, value = T)
+ref_names <- sapply(ref_names, function(i) {
+  r <- ifelse(grepl("NoIndex", i),
+         gsub("(^C|_.+)", "", i),
+         gsub("_.+", "", i)
+         )
+  # r <- gsub("_.+", "", i)
+  # return(r)
+  id <- grep(r, af_sample$accession_id, value = T)
+  prior <- af_sample$phenotype_value[af_sample$accession_id == id]
+  return(paste(id, prior, sep = "_"))
+}, USE.NAMES = F)
+```
+
+
+```{r}
+snp_snmf <- load.snmfProject("/data/projects/rob/data/most_elai/snmf/thin_ref.snmfProject")
+ind_order_snp <- barchart(snp_snmf, K = k, run = which.min(cross.entropy(snp_snmf, K = 5)), plot = F)
+snp_ref_prop <- as.data.frame(Q(snp_snmf, K = k, run = which.min(cross.entropy(snp_snmf, K = k))))
+snp_ref_prop$Label <- ref_names
+snp_ref_prop$prior <- factor(gsub(".+_", "", ref_names), levels = c("ER", "OB", "C", "AG", "D"))
+snp_ref_prop <- pivot_longer(snp_ref_prop, cols = V1:V5, names_to = "ancestry", values_to = "proportion")
+## rename ancestry
+repre_snp <- snp_ref_prop %>% group_by(ancestry) %>% arrange(desc(proportion)) %>% slice_head(n = 1) %>% slice_tail(n = 1)
+# rename_ancestr <- sapply(repre$ancestry, function(i) af_sample$phenotype_value[af_sample$accession_id == repre$Label[repre$ancestry == i]])
+# levels(prop$ancestry) <- repre$prior
+
+snp_ref_prop$Label <- factor(snp_ref_prop$Label, levels = unique(snp_ref_prop$Label)[ind_order_snp$order], ordered = F)
+snp_ref_prop$ancestry <- sapply(snp_ref_prop$ancestry, function(i) repre_snp$prior[repre_snp$ancestry == i], USE.NAMES = F)
+
+ggplot(snp_ref_prop) +
+  geom_col(aes(x = Label, y = proportion, fill = ancestry), position = position_stack(), width = .95, size = 0) + 
+  # scale_fill_viridis_d(end = .9)+
+  scale_fill_manual(values = turbo(5)) +
+  scale_x_discrete(expand = c(0,0)) +
+  scale_y_continuous(expand = c(0, 0)) +
+  ylab("Ancestry proportion")  +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 90, size = 10, hjust = 1),
+    axis.title.y = element_text(size = 12),
+    # axis.title.x = element_blank(),
+    legend.text = element_text(size = 12),
+    legend.title = element_text(size = 12),
+    legend.key.size = unit(5, "mm"),
+    axis.ticks.y = element_line(size = .1),
+    axis.text.y = element_text(size = 8),
+    panel.spacing = unit(2, "mm"),
+    # strip.text.x = element_text(angle = 90, size = 10, hjust = 1)
+    ) 
+```
+
+### compare snmf results of 1M kmers and the snps set
+
+```{r}
+both_prop <- full_join(kmer_ref_prop %>% mutate(type = "1M KMER"),
+          snp_ref_prop %>% mutate(type = "100K SNP"))
+pdf("/data/projects/rob/data/kmers/plots/structure_check.pdf", width = 15, height = 8)
+ggplot(both_prop) +
+  facet_grid(rows = vars(type)) +
+  geom_col(aes(x = Label, y = proportion, fill = ancestry), position = position_stack(), width = .95, size = 0) + 
+  # scale_fill_viridis_d(end = .9)+
+  scale_fill_manual(values = turbo(5)) +
+  scale_x_discrete(expand = c(0,0)) +
+  scale_y_continuous(expand = c(0, 0)) +
+  ylab("Ancestry proportion")  +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 90, size = 10, hjust = 1),
+    axis.title.y = element_text(size = 12),
+    axis.title.x = element_blank(),
+    legend.text = element_text(size = 12),
+    legend.title = element_text(size = 12),
+    legend.key.size = unit(5, "mm"),
+    axis.ticks.y = element_line(size = .1),
+    axis.text.y = element_text(size = 8),
+    panel.spacing = unit(4, "mm"),
+    strip.text.y = element_text(angle = -90, size = 15, hjust = 0.5)
+    ) 
+dev.off()
+```
+
+```{r}
+kmer_snp_cor <- full_join(kmer_ref_prop %>% rename(kmer = proportion),
+          snp_ref_prop %>% rename(snp = proportion)) %>% 
+  group_by(ancestry) %>% 
+  summarise(correlation = cor(kmer, snp)) %>% 
+  pull(correlation) %>% mean()
+cat("correlation between snmf of kmer set and snp set:", kmer_snp_cor)
+```
+-> very high correlation  
+
+### run pca on the snp set
+
+```{r}
+af_snp_geno_file <- "/data/projects/rob/data/most_elai/snmf/thin_ref.geno"
+af_snp_pca <- pca(af_snp_geno_file)
+af_snp_proj <- as.data.frame(af_snp_pca$projections[,1:2])
+af_snp_proj$accession_id <- gsub("_.{1,2}$", "", ref_names)
+af_snp_proj <- left_join(af_snp_proj, af_sample)
+colnames(af_snp_proj)[1:2] <- c("PC1", "PC2")
+af_snp_eigen <- af_snp_pca$eigenvalues[,1]
+af_snp_proj$label <- factor(af_snp_proj$label, levels = c("A", "B", "C", "D", "E", "G", "O", "R", "hb"))
+
+pdf("/data/projects/rob/data/kmers/plots/af_pca_100kSNPs.pdf")
+ggplot(af_snp_proj) +
+  # geom_point(aes(x = PC1, y = PC2, color = group), alpha = .5) +
+  geom_text(aes(x = PC1, y = PC2, label = label, color = label), show.legend = F, size = 6) +
+  xlab(paste0("PC1 (", format(af_snp_eigen[1]/sum(af_snp_eigen)*100, digits = 2), "%)")) +
+  ylab(paste0("PC2 (", format(af_snp_eigen[2]/sum(af_snp_eigen)*100, digits = 2), "%)"))  +
+  theme_minimal() +
+  theme(axis.title = element_text(size = 15), panel.border = element_rect(color = "gray", fill = NA))
+dev.off()
+```
+
+## Kiss on the whole set
+
+### pca on the snp set
+
+```{r}
+ind_names <- sapply(ind_names, function(i) {
+    r <- ifelse(grepl("NoIndex", i),
+                gsub("(^C|_.+)", "", i),
+                gsub("_.+", "", i)
+    )
+    # r <- gsub("_.+", "", i)
+    # return(r)
+    id <- grep(r, sample$accession_id, value = T)
+    # prior <- sample$phenotype_value[sample$accession_id == id]
+    return(id)
+}, USE.NAMES = F)
+```
+
+
+```{r}
+snp_geno_file <- "/data/projects/rob/data/most_elai/snmf/thin_all.geno"
+snp_pca <- pca(snp_geno_file)
+snp_proj <- as.data.frame(snp_pca$projections[,1:2])
+snp_proj$accession_id <- ind_names
+snp_proj <- left_join(snp_proj, sample) %>% 
+  rename(PC1 = V1, PC2 = V2) %>% 
+  mutate(prior = gsub("(S-|TR)", NA, label))
+snp_eigen <- snp_pca$eigenvalues[,1]
+snp_proj$prior <- factor(snp_proj$prior, levels = c("A", "B", "C", "D", "E", "G", "O", "R", "hb", NA))
+
+
+pdf("/data/projects/rob/data/kmers/plots/all_pca_100kSNPs.pdf")
+ggplot(snp_proj[nrow(snp_proj):1,]) +
+  # geom_point(aes(x = PC1, y = PC2, color = group), alpha = .5) +
+  geom_text(aes(x = PC1, y = PC2, label = label, color = prior), show.legend = F, size = 6) +
+  xlab(paste0("PC1 (", format(snp_eigen[1]/sum(snp_eigen)*100, digits = 2), "%)")) +
+  ylab(paste0("PC2 (", format(snp_eigen[2]/sum(snp_eigen)*100, digits = 2), "%)"))  +
+  theme_minimal() +
+  theme(axis.title = element_text(size = 15), panel.border = element_rect(color = "gray", fill = NA))
+dev.off()
+```
+
+
+## GEA
+
+```{r}
+library(lfmm)
+library(psych)
+```
+
+Below is a trial on a random k-mer set (batch 415) of the african data
+
+### environment variables
+
+```{r}
+clim_file <- "/data/projects/rob/data/kmers/gea/climatic_variables.csv"
+clim <- fread(clim_file, data.table = T)
+clim <- clim %>% column_to_rownames("Label")
+```
+
+the correlation of the climatic data (only the "annual" variables)
+```{r}
+test_clim <- clim[, c(1,3,7,12)]
+svg("/data/projects/rob/data/kmers/gea/climate_correlation.svg")
+pairs.panels(test_clim, hist.col = "royalblue", ellipses = F, pch = c(1:9)[as.factor(clim$kasp_group)])
+dev.off()
+```
+
+
+### genotype 
+```{r}
+submat1 <- submat
+rownames(submat1) <- gsub("_.+", "", rownames(submat1))
+submat1 <- submat1[rownames(submat1) %in% rownames(clim),]
+```
+
+### lfmm
+```{r}
+
+```
+
+
