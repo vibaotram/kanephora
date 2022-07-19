@@ -314,6 +314,7 @@ library(psych)
 library(car)
 library(GGally)
 library(viridis)
+library(vegan)
 ```
 
 Below is a trial on a random k-mer set (batch 415) of the african data
@@ -352,6 +353,39 @@ ggpairs(test_clim, columns = 1:4, aes(color = snp_group)) +
 ggsave("gea/climate_correlation_groups_gg.svg", width = 8, height = 8)
 ```
 
+
+```{r}
+library(rnaturalearth)
+group_col <- c("#FB8022FF", "#A2FC3CFF", "#7A0403FF", "#30123BFF", "#28BBECFF")
+
+africa <- ne_countries(scale = "medium", continent = "africa", returnclass = "sf")
+
+
+africa <- africa %>% 
+  mutate(ancestry = case_when(sovereignt %in% c("Ivory Coast", "Guinea", "Ghana") ~ "D",
+                              sovereignt == "Cameroon" ~ "C",
+                              sovereignt %in% c("Gabon", "Benin", "Angola") ~ "AG",
+                              sovereignt %in% c("Uganda", "Central African Republic") ~ "OB",
+                              sovereignt == "Democratic Republic of the Congo" ~ "ER"))
+
+rob_countries <- africa %>% filter(!is.na(ancestry))
+
+ggplot(data = africa) +
+  geom_sf(fill = "white", color = "grey") +
+  geom_point(data = clim, aes(x = Long, y = Lat, color = snp_group)) +
+  stat_density2d(data = clim, aes(x = Long, y = Lat, fill = snp_group), alpha = .5,
+                 geom = "polygon") +
+  # geom_sf(data = rob_countries, aes(fill = ancestry), color = "grey") +
+  # geom_sf_text(data = rob_countries, aes(label = abbrev), color = "grey50") +
+  scale_color_manual(values = c(group_col, "gray"), na.value = "grey50") +
+  scale_fill_manual(values = c(group_col, "gray"), na.value = "grey50") +
+  coord_sf(xlim = c(-15, 48), ylim = c(-40, 35), expand = TRUE) +
+  theme_void() +
+  theme(legend.box.margin = margin(l = 20), 
+        legend.key.size = unit(14, "pt"),
+        legend.key.height = unit(15, "pt"))
+```
+
 ### genotype 
 ```{r}
 submat1 <- submat
@@ -359,9 +393,79 @@ rownames(submat1) <- gsub("_.+", "", rownames(submat1))
 submat1 <- submat1[rownames(submat1) %in% rownames(clim),]
 ```
 
-### lfmm
+### lfmm with all variables
 ```{r}
-
+suball_lfmm <- lfmm_ridge(Y = submat1, X = clim[, 1:19], K = 5)
+pv <- lfmm_test(Y = submat1, X = clim[, 1:19], 
+                lfmm = suball_lfmm, 
+                calibrate = "gif")
+hist(pv$calibrated.pvalue)
 ```
 
+```{r}
+associated_kmers <- rownames(pv$calibrated.pvalue)[sapply(1:nrow(pv$calibrated.pvalue), function(i) any(pv$calibrated.pvalue[i, 1:19] < 0.05))]
+length(unique(associated_kmers))
+
+u <- 0
+for (i in 1:19) {
+  cat(paste0("bio", i, ": "))
+  v <- length(rownames(pv$calibrated.pvalue)[pv$calibrated.pvalue[,i] < 0.05])
+  u <- u+v
+  cat(v)
+  cat("\n")
+  }
+```
+
+-> 507468 significant k-mers
+-> the histogram seems fine but half of the k-mers are significant 
+
+### lfmm with only annual climatic variables
+
+```{r}
+subann_lfmm <- lfmm_ridge(Y = submat1, X = clim[, c(1,3,7,12)], K = 5)
+pv_ann <- lfmm_test(Y = submat1, X = clim[, c(1,3,7,12)], 
+                    lfmm = subann_lfmm, 
+                    calibrate = "gif")
+hist(pv_ann$calibrated.pvalue)
+
+signif_ann <- rownames(pv_ann$calibrated.pvalue)[sapply(1:nrow(pv_ann$calibrated.pvalue), function(i) any(pv_ann$calibrated.pvalue[i,] < 0.05))]
+length(unique(signif_ann))
+```
+-> 263789 significant k-mers
+
+### lfmm with pca axes
+
+```{r}
+clim_pca <- rda(clim[,1:19], scale = T)
+summary(clim_pca)$cont
+round(scores(clim_pca, choices = 1:2, display = "species", scaling = 0), digits = 3)
+```
+
+```{r}
+clim_PC1 <- scores(clim_pca, choices = 1, display = "sites", scaling = 0)
+subpca_lfmm <- lfmm_ridge(Y = submat1, X = clim_PC1, K = 5)
+
+pv_pca <- lfmm_test(Y = submat1, X = clim_PC1, 
+                    lfmm = subpca_lfmm, 
+                    calibrate = "gif")
+hist(pv_pca$calibrated.pvalue)
+pv_pca$gif
+
+signif_pca <- rownames(pv_pca$calibrated.pvalue)[sapply(1:nrow(pv_pca$calibrated.pvalue), function(i) any(pv_pca$calibrated.pvalue[i,] < 0.05))]
+length(unique(signif_pca))
+```
+
+```{r}
+clim_PC2 <- scores(clim_pca, choices = 1:2, display = "sites", scaling = 0)
+subpca2_lfmm <- lfmm_ridge(Y = submat1, X = clim_PC2, K = 5)
+
+pv_pca2 <- lfmm_test(Y = submat1, X = clim_PC2, 
+                    lfmm = subpca2_lfmm, 
+                    calibrate = "gif")
+hist(pv_pca2$calibrated.pvalue)
+pv_pca2$gif
+
+signif_pca2 <- rownames(pv_pca2$calibrated.pvalue)[sapply(1:nrow(pv_pca2$calibrated.pvalue), function(i) any(pv_pca2$calibrated.pvalue[i,] < 0.05))]
+length(unique(signif_pca2))
+```
 
