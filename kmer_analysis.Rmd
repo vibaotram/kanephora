@@ -19,6 +19,7 @@ library(data.table)
 setwd("/data/projects/rob/scripts/kmer")
 ```
 
+`k-mers can identify not only almost all associations found by SNPs and short indels but also SVs and variants in sequences not present in reference genomes`
 
 # Objectives:  
 1. detect k-mers under selection (associated with population structure)
@@ -33,6 +34,14 @@ setwd("/data/projects/rob/scripts/kmer")
 
 
 ## Test Kiss on the african set
+
+```{r}
+sbatch /data/projects/rob/scripts/kiss_scripts/af_kiss_ci2.sh
+```
+
+first I tried pcadapt with K=2  
+then I found from the scree plot that K = 7 should be a better value  
+because it is the largest value before plateau and it is congruent with the cross entropy evaluation by snmf
 
 ### choose a random k-mer set
 
@@ -305,6 +314,7 @@ ggplot(snp_proj[nrow(snp_proj):1,]) +
 dev.off()
 ```
 
+-> 399,265,658 adaptive k-mers (K = 7)
 
 ## GEA
 
@@ -327,12 +337,12 @@ clim <- fread(clim_file, data.table = T)
 clim <- clim %>% column_to_rownames("Label")
 ```
 
-the correlation of the climatic data (only the "annual" variables)
+the correlation of the "annual" variables
 ```{r}
-test_clim <- clim[, c(1,3,7,12, ncol(clim))]
-svg("/data/projects/rob/data/kmers/gea/climate_correlation.svg")
-pairs.panels(test_clim, hist.col = "royalblue", ellipses = F, pch = c(0:5)[as.factor(clim$snp_group)])
-legend(1, pch = c(0:5), legend = levels(as.factor(clim$snp_group)))
+test_clim <- clim[, c(1,7,12)]
+pdf("/data/projects/rob/data/kmers/gea/annual_climate_correlation.pdf")
+pairs.panels(test_clim, hist.col = "royalblue", ellipses = F)
+# legend(1, pch = c(0:5), legend = levels(as.factor(clim$snp_group)))
 dev.off()
 ```
 
@@ -344,13 +354,32 @@ dev.off()
 
 
 ```{r}
-test_clim$snp_group <- factor(test_clim$snp_group, levels = c("ER", "OB", "C", "AG", "D", "hb"))
-ggpairs(test_clim, columns = 1:4, aes(color = snp_group)) + 
+test_clim$snp_group <- factor(clim$snp_group, levels = c("ER", "OB", "C", "AG", "D", "hb"))
+ggpairs(test_clim, columns = 1:3, aes(color = snp_group)) + 
   scale_color_manual(values = c(turbo(5), "gray")) +
   scale_fill_manual(values = c(turbo(5), "gray")) +
   theme_minimal() +
   theme(panel.background = element_rect(color = "gray"))
-ggsave("gea/climate_correlation_groups_gg.svg", width = 8, height = 8)
+ggsave("gea/annual_climate_correlation_groups_gg.svg", width = 8, height = 8)
+```
+
+the correlation of the variables maximizing the deviance (Tournebize et al. 2022)
+```{r}
+test_clim <- clim[, c(2,10,12, 15, 18)]
+svg("/data/projects/rob/data/kmers/gea/deviance_climate_correlation.svg")
+pairs.panels(test_clim, hist.col = "royalblue", ellipses = F)
+# legend(1, pch = c(0:5), legend = levels(as.factor(clim$snp_group)))
+dev.off()
+```
+
+```{r}
+test_clim$snp_group <- factor(clim$snp_group, levels = c("ER", "OB", "C", "AG", "D", "hb"))
+ggpairs(test_clim, columns = 1:5, aes(color = snp_group)) + 
+  scale_color_manual(values = c(turbo(5), "gray")) +
+  scale_fill_manual(values = c(turbo(5), "gray")) +
+  theme_minimal() +
+  theme(panel.background = element_rect(color = "gray"))
+ggsave("gea/deviance_climate_correlation_groups_gg.svg", width = 8, height = 8)
 ```
 
 
@@ -386,6 +415,16 @@ ggplot(data = africa) +
         legend.key.height = unit(15, "pt"))
 ```
 
+
+### elevation data (not working)
+
+```{r}
+library(elevatr)
+ll_prj <- "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"
+elev <- get_elev_point(clim[,c(21,20)], prj = ll_prj)
+
+```
+
 ### genotype 
 ```{r}
 submat1 <- submat
@@ -394,8 +433,13 @@ submat1 <- submat1[rownames(submat1) %in% rownames(clim),]
 ```
 
 ### lfmm with all variables
+
 ```{r}
-suball_lfmm <- lfmm_ridge(Y = submat1, X = clim[, 1:19], K = 5)
+k <- 7 # based on pcadapt and snmf results
+```
+
+```{r}
+suball_lfmm <- lfmm_ridge(Y = submat1, X = clim[, 1:19], K = k)
 pv <- lfmm_test(Y = submat1, X = clim[, 1:19], 
                 lfmm = suball_lfmm, 
                 calibrate = "gif")
@@ -422,7 +466,7 @@ for (i in 1:19) {
 ### lfmm with only annual climatic variables
 
 ```{r}
-subann_lfmm <- lfmm_ridge(Y = submat1, X = clim[, c(1,3,7,12)], K = 5)
+subann_lfmm <- lfmm_ridge(Y = submat1, X = clim[, c(1,3,7,12)], K = k)
 pv_ann <- lfmm_test(Y = submat1, X = clim[, c(1,3,7,12)], 
                     lfmm = subann_lfmm, 
                     calibrate = "gif")
@@ -439,11 +483,41 @@ length(unique(signif_ann))
 clim_pca <- rda(clim[,1:19], scale = T)
 summary(clim_pca)$cont
 round(scores(clim_pca, choices = 1:2, display = "species", scaling = 0), digits = 3)
+biplot(clim_pca)
+
 ```
 
 ```{r}
+clim_pca2 <- prcomp(clim[,1:19], scale = T)
+summary(clim_pca2)
+screeplot(clim_pca2)
+```
+
+
+```{r}
+test_clim_pca <- clim[, c(12,14,17)]
+svg("/data/projects/rob/data/kmers/gea/climate_correlation.svg")
+pairs.panels(test_clim_pca, hist.col = "royalblue", ellipses = F, pch = c(0:5)[as.factor(clim$snp_group)])
+legend(1, pch = c(0:5), legend = levels(as.factor(clim$snp_group)))
+dev.off()
+
+ggpairs(clim, columns = c(12,14,17), aes(color = snp_group)) + 
+  scale_color_manual(values = c(turbo(5), "gray")) +
+  scale_fill_manual(values = c(turbo(5), "gray")) +
+  theme_minimal() +
+  theme(panel.background = element_rect(color = "gray"))
+
+ggpairs(clim, columns = c(1,5,8:10), aes(color = snp_group)) + 
+  scale_color_manual(values = c(turbo(5), "gray")) +
+  scale_fill_manual(values = c(turbo(5), "gray")) +
+  theme_minimal() +
+  theme(panel.background = element_rect(color = "gray"))
+```
+
+
+```{r}
 clim_PC1 <- scores(clim_pca, choices = 1, display = "sites", scaling = 0)
-subpca_lfmm <- lfmm_ridge(Y = submat1, X = clim_PC1, K = 5)
+subpca_lfmm <- lfmm_ridge(Y = submat1, X = clim_PC1, K = k)
 
 pv_pca <- lfmm_test(Y = submat1, X = clim_PC1, 
                     lfmm = subpca_lfmm, 
@@ -457,15 +531,87 @@ length(unique(signif_pca))
 
 ```{r}
 clim_PC2 <- scores(clim_pca, choices = 1:2, display = "sites", scaling = 0)
-subpca2_lfmm <- lfmm_ridge(Y = submat1, X = clim_PC2, K = 5)
+subpca2_lfmm <- lfmm_ridge(Y = submat1, X = clim_PC2, K = k)
 
 pv_pca2 <- lfmm_test(Y = submat1, X = clim_PC2, 
                     lfmm = subpca2_lfmm, 
                     calibrate = "gif")
 hist(pv_pca2$calibrated.pvalue)
+for (i in 1:2) {
+  hist(pv_pca2$calibrated.pvalue[,i], 
+       main = paste0("Calibrated p-values for PC", i, 
+                     " (GIF = ", sprintf("%.2f", pv_pca2$gif[i]), ")"),
+       xlab = "p-values")
+}
 pv_pca2$gif
 
 signif_pca2 <- rownames(pv_pca2$calibrated.pvalue)[sapply(1:nrow(pv_pca2$calibrated.pvalue), function(i) any(pv_pca2$calibrated.pvalue[i,] < 0.05))]
 length(unique(signif_pca2))
+
+plot(-log10(pv_pca2$calibrated.pvalue[,1]), 
+      pch = 19, 
+      cex = .2, 
+      xlab = "k-mer", ylab = "-Log P",
+      col = "grey")
+plot(-log10(pv_pca2$calibrated.pvalue[,2]), 
+      pch = 19, 
+      cex = .2, 
+      xlab = "k-mer", ylab = "-Log P",
+      col = "grey")
 ```
+-> 144573 k-mers
+
+### genome-wide lfmm
+
+gather all the lfmm results for all the k-mer batches
+```{r}
+lfmm_out <- "/data/projects/rob/scripts/kmer/gea/lfmm/out"
+lfmm_files <- list.files(lfmm_out, pattern = ".*.csv", full.names = T, recursive = T)
+all_lfmm <- file.path(lfmm_out, "all_candidates.csv")
+file.append(all_lfmm, lfmm_files)
+```
+
+count the number of total candidate kmers
+```{bash}
+wc -l /data/projects/rob/scripts/kmer/gea/lfmm/out/all_candidates.csv
+```
+-> 218,269,911 k-mers (12%)
+
+### RDA
+
+```{r}
+sub_rda <- rda(submat1 ~ ., data = clim[, 1:19], scale = T)
+summary(sub_rda)$concont
+RsquareAdj(sub_rda)
+screeplot(sub_rda)
+vif.cca(sub_rda)
+plot(sub_rda, scaling = 3)
+```
+
+```{r}
+load_rda <- summary(sub_rda)$species[,1:2]
+hist(load_rda[,1])
+hist(load_rda[,2])
+```
+
+```{r}
+outliers <- function(x,z){
+  lims <- mean(x) + c(-1, 1) * z * sd(x)     # find loadings +/-z sd from mean loading     
+  x[x < lims[1] | x > lims[2]]               # locus names in these tails
+}
+
+cand1 <- outliers(load_rda[,1], 2)
+length(cand1)
+cand2 <- outliers(load_rda[,2], 2)
+length(cand2)
+signif_rda <- unique(names(c(cand1, cand2)))
+```
+
+-> 132070 candidate k-mers
+
+```{r}
+length(signif_pca2[signif_pca2 %in% signif_rda])
+length(signif_rda[signif_rda %in% signif_pca2])
+```
+-> only 40835 common k-mers
 

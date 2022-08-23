@@ -1,0 +1,126 @@
+analyzing /data/projects/rob/scripts/kmer/gea/tmp/5.RANGES/output_file.6/9.txt on node0
+working dir: /scratch/baotram/tmp.uv48jqE1ay_6_9
+sending incremental file list
+output_file.6.bed
+       32768   0%    0.00kB/s    0:00:00   209158144  14%  199.44MB/s    0:00:05   431226880  30%  205.71MB/s    0:00:04   660766720  47%  210.18MB/s    0:00:03   889815040  63%  212.30MB/s    0:00:02  1120370688  80%  217.41MB/s    0:00:01  1351155712  96%  219.49MB/s    0:00:00  1400000003 100%  214.82MB/s    0:00:06 (xfer#1, to-check=2/3)
+output_file.6.bim
+       32768   0%  144.14kB/s    8:05:37   163446784   3%  155.88MB/s    0:00:25   380993536   9%  181.76MB/s    0:00:20   582778880  13%  185.38MB/s    0:00:19   809304064  19%  193.10MB/s    0:00:17  1034027008  24%  207.72MB/s    0:00:14  1258586112  29%  209.39MB/s    0:00:13  1474592768  35%  212.78MB/s    0:00:12  1700462592  40%  212.63MB/s    0:00:11  1929412608  45%  213.64MB/s    0:00:10  2161410048  51%  215.41MB/s    0:00:09  2391801856  56%  218.84MB/s    0:00:08  2623963136  62%  220.34MB/s    0:00:06  2828271616  67%  214.47MB/s    0:00:06  3027271680  72%  206.59MB/s    0:00:05  3228991488  76%  199.75MB/s    0:00:04  3461087232  82%  199.74MB/s    0:00:03  3694297088  87%  206.63MB/s    0:00:02  3926425600  93%  214.54MB/s    0:00:01  4160552960  99%  222.27MB/s    0:00:00  4200000000 100%  209.16MB/s    0:00:19 (xfer#2, to-check=1/3)
+output_file.6.fam
+        2076 100%   11.52kB/s    0:00:00        2076 100%   11.52kB/s    0:00:00 (xfer#3, to-check=0/3)
+
+sent 5600685879 bytes  received 69 bytes  219634743.06 bytes/sec
+total size is 5600002079  speedup is 1.00
+sending incremental file list
+9.txt
+       32768   0%    0.00kB/s    0:00:00     8889206 100%   10.68MB/s    0:00:00 (xfer#1, to-check=0/1)
+
+sent 8890384 bytes  received 31 bytes  5926943.33 bytes/sec
+total size is 8889206  speedup is 1.00
+sending incremental file list
+climatic_variables.csv
+        4780 100%    0.00kB/s    0:00:00        4780 100%    0.00kB/s    0:00:00 (xfer#1, to-check=0/1)
+
+sent 4890 bytes  received 31 bytes  9842.00 bytes/sec
+total size is 4780  speedup is 0.97
+sending incremental file list
+lfmm.R
+        4284 100%    0.00kB/s    0:00:00        4284 100%    0.00kB/s    0:00:00 (xfer#1, to-check=0/1)
+
+sent 4378 bytes  received 31 bytes  8818.00 bytes/sec
+total size is 4284  speedup is 0.97
+Loading required package: permute
+Loading required package: lattice
+This is vegan 2.5-6
+Warning message:
+package ‘permute’ was built under R version 4.0.3 
+Registered S3 methods overwritten by 'tibble':
+  method     from  
+  format.tbl pillar
+  print.tbl  pillar
+
+Attaching package: ‘dplyr’
+
+The following objects are masked from ‘package:Biostrings’:
+
+    collapse, intersect, setdiff, setequal, union
+
+The following object is masked from ‘package:XVector’:
+
+    slice
+
+The following objects are masked from ‘package:IRanges’:
+
+    collapse, desc, intersect, setdiff, slice, union
+
+The following objects are masked from ‘package:S4Vectors’:
+
+    first, intersect, rename, setdiff, setequal, union
+
+The following objects are masked from ‘package:BiocGenerics’:
+
+    combine, intersect, setdiff, union
+
+The following objects are masked from ‘package:stats’:
+
+    filter, lag
+
+The following objects are masked from ‘package:base’:
+
+    intersect, setdiff, setequal, union
+
+── Attaching packages ─────────────────────────────────────── tidyverse 1.3.0 ──
+✔ ggplot2 3.3.2     ✔ purrr   0.3.4
+✔ tibble  3.0.3     ✔ stringr 1.4.0
+✔ tidyr   1.1.2     ✔ forcats 0.5.0
+✔ readr   1.4.0     
+── Conflicts ────────────────────────────────────────── tidyverse_conflicts() ──
+✖ dplyr::collapse()   masks Biostrings::collapse(), IRanges::collapse()
+✖ dplyr::combine()    masks BiocGenerics::combine()
+✖ purrr::compact()    masks XVector::compact()
+✖ dplyr::desc()       masks IRanges::desc()
+✖ tidyr::expand()     masks S4Vectors::expand()
+✖ dplyr::filter()     masks stats::filter()
+✖ dplyr::first()      masks S4Vectors::first()
+✖ dplyr::lag()        masks stats::lag()
+✖ ggplot2::Position() masks BiocGenerics::Position(), base::Position()
+✖ purrr::reduce()     masks IRanges::reduce()
+✖ dplyr::rename()     masks S4Vectors::rename()
+✖ dplyr::slice()      masks XVector::slice(), IRanges::slice()
+Warning messages:
+1: package ‘tidyverse’ was built under R version 4.0.3 
+2: package ‘purrr’ was built under R version 4.0.3 
+3: package ‘stringr’ was built under R version 4.0.3 
+
+Attaching package: ‘data.table’
+
+The following object is masked from ‘package:purrr’:
+
+    transpose
+
+The following objects are masked from ‘package:dplyr’:
+
+    between, first, last
+
+The following object is masked from ‘package:IRanges’:
+
+    shift
+
+The following objects are masked from ‘package:S4Vectors’:
+
+    first, second
+
+Extracting number of samples and rownames from output_file.6.fam...
+Extracting number of variants and colnames from output_file.6.bim...
+Read 1000000 items
+[1] "run lfmm using 2 PCs from PCA of climatic variables"
+null device 
+          1 
+Number of candidate k-mers: 159392sending incremental file list
+6_9/
+6_9/candidates.csv
+       32768   0%    0.00kB/s    0:00:00    13611078 100%   68.51MB/s    0:00:00 (xfer#1, to-check=1/3)
+6_9/lfmm_results.pdf
+        5677 100%   29.33kB/s    0:00:00        5677 100%   29.33kB/s    0:00:00 (xfer#2, to-check=0/3)
+
+sent 13618616 bytes  received 54 bytes  5447468.00 bytes/sec
+total size is 13616755  speedup is 1.00

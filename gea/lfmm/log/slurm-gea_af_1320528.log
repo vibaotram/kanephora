@@ -1,0 +1,126 @@
+analyzing /data/projects/rob/scripts/kmer/gea/tmp/5.RANGES/output_file.6/10.txt on node18
+working dir: /scratch/baotram/tmp.Rz7OTZYdRt_6_10
+sending incremental file list
+output_file.6.bed
+       32768   0%    0.00kB/s    0:00:00    15237120   1%   14.08MB/s    0:01:36    24674304   1%   11.44MB/s    0:01:57    33062912   2%   10.21MB/s    0:02:10    50364416   3%   11.75MB/s    0:01:52    59801600   4%   10.48MB/s    0:02:04    64782336   4%    9.47MB/s    0:02:17    74481664   5%    9.75MB/s    0:02:12    92602368   6%    9.94MB/s    0:02:08   170426368  12%   26.04MB/s    0:00:46   253788160  18%   44.62MB/s    0:00:25   289472512  20%   50.51MB/s    0:00:21   298647552  21%   48.41MB/s    0:00:22   309886976  22%   32.69MB/s    0:00:32   319586304  22%   15.37MB/s    0:01:08   331677696  23%    9.09MB/s    0:01:54   344227840  24%    8.19MB/s    0:02:05   353927168  25%    7.84MB/s    0:02:10   363888640  25%    7.88MB/s    0:02:08   374898688  26%    8.31MB/s    0:02:00   411074560  29%   15.61MB/s    0:01:01   491290624  35%   32.59MB/s    0:00:27   530612224  37%   39.71MB/s    0:00:21   541360128  38%   39.58MB/s    0:00:21   553189376  39%   29.68MB/s    0:00:27   563380224  40%   15.04MB/s    0:00:54   626819072  44%   20.08MB/s    0:00:37   701792256  50%   33.47MB/s    0:00:20   759726080  54%   49.07MB/s    0:00:12   771031040  55%   49.38MB/s    0:00:12   779681792  55%   35.64MB/s    0:00:16   789086208  56%   20.36MB/s    0:00:29   796950528  56%    8.60MB/s    0:01:08   806649856  57%    8.21MB/s    0:01:10   816873472  58%    8.74MB/s    0:01:05   880345088  62%   21.46MB/s    0:00:23   967606272  69%   40.54MB/s    0:00:10  1051492352  75%   58.27MB/s    0:00:05  1104969728  78%   68.45MB/s    0:00:04  1132789760  80%   54.37MB/s    0:00:04  1193836544  85%   48.64MB/s    0:00:04  1203798016  85%   32.56MB/s    0:00:05  1213759488  86%   23.22MB/s    0:00:07  1222672384  87%   21.13MB/s    0:00:08  1232896000  88%    9.20MB/s    0:00:17  1241284608  88%    8.88MB/s    0:00:17  1250983936  89%    8.80MB/s    0:00:16  1261502464  90%    9.21MB/s    0:00:14  1271693312  90%    9.19MB/s    0:00:13  1347289088  96%   25.13MB/s    0:00:02  1392017408  99%   33.38MB/s    0:00:00  1400000003 100%   24.86MB/s    0:00:53 (xfer#1, to-check=2/3)
+output_file.6.bim
+       32768   0%   36.04kB/s   32:22:29     2129920   0%    1.97MB/s    0:34:38    12091392   0%    5.64MB/s    0:12:05    21790720   0%    6.77MB/s    0:10:02    30965760   0%    7.23MB/s    0:09:22    41451520   0%    9.25MB/s    0:07:19    52723712   1%    9.56MB/s    0:07:03   100204544   2%   18.54MB/s    0:03:35   158040064   3%   30.15MB/s    0:02:10   241696768   5%   47.55MB/s    0:01:21   306216960   7%   60.14MB/s    0:01:03   314605568   7%   50.86MB/s    0:01:14   323256320   7%   39.09MB/s    0:01:36   331907072   7%   21.28MB/s    0:02:57   340557824   8%    8.11MB/s    0:07:44   349470720   8%    8.22MB/s    0:07:37   357859328   8%    8.09MB/s    0:07:43   367755264   8%    8.40MB/s    0:07:25   376733696   8%    8.50MB/s    0:07:19   387481600   9%    8.90MB/s    0:06:58   397443072   9%    9.33MB/s    0:06:37   407142400   9%    9.20MB/s    0:06:42   421036032  10%   10.35MB/s    0:05:56   436764672  10%   11.56MB/s    0:05:17   502824960  11%   24.80MB/s    0:02:25   550273024  13%   33.78MB/s    0:01:45   560234496  13%   32.75MB/s    0:01:48   569671680  13%   31.07MB/s    0:01:54   638615552  15%   31.75MB/s    0:01:49   675315712  16%   29.35MB/s    0:01:57   685539328  16%   29.53MB/s    0:01:56   693927936  16%   29.06MB/s    0:01:57   702840832  16%   15.02MB/s    0:03:47   712048640  16%    8.62MB/s    0:06:35   720142336  17%    8.12MB/s    0:06:58   739803136  17%   10.94MB/s    0:05:08   760774656  18%   13.80MB/s    0:04:03   781484032  18%   16.44MB/s    0:03:23   790396928  18%   16.60MB/s    0:03:20   799309824  19%   14.06MB/s    0:03:56   808484864  19%   11.20MB/s    0:04:55   819232768  19%    8.91MB/s    0:06:10   862748672  20%   17.10MB/s    0:03:10   929562624  22%   30.78MB/s    0:01:43   937984000  22%   30.57MB/s    0:01:44   948469760  22%   30.47MB/s    0:01:44   969965568  23%   25.18MB/s    0:02:05   979402752  23%   11.64MB/s    0:04:30   990674944  23%   12.32MB/s    0:04:14  1002209280  23%   12.59MB/s    0:04:08  1008762880  24%    8.48MB/s    0:06:07  1068433408  25%   19.56MB/s    0:02:36  1148485632  27%   34.92MB/s    0:01:25  1159233536  27%   34.57MB/s    0:01:25  1170767872  27%   38.09MB/s    0:01:17  1180467200  28%   26.32MB/s    0:01:52  1187020800  28%    9.03MB/s    0:05:25  1198555136  28%    9.26MB/s    0:05:16  1207730176  28%    8.77MB/s    0:05:33  1217429504  28%    8.72MB/s    0:05:33  1225818112  29%    9.17MB/s    0:05:16  1239187456  29%    9.56MB/s    0:05:02  1248886784  29%    9.52MB/s    0:05:02  1257930752  29%    9.44MB/s    0:05:04  1266974720  30%    9.58MB/s    0:04:58  1276411904  30%    8.71MB/s    0:05:27  1286373376  30%    8.84MB/s    0:05:21  1298956288  30%    9.64MB/s    0:04:53  1308065792  31%    9.69MB/s    0:04:51  1317044224  31%    9.55MB/s    0:04:54  1325826048  31%    9.35MB/s    0:05:00  1346928640  32%   11.33MB/s    0:04:05  1354268672  32%    9.47MB/s    0:04:53  1365278720  32%    9.89MB/s    0:04:39  1375240192  32%   10.00MB/s    0:04:35  1385201664  32%    7.78MB/s    0:05:53  1394900992  33%    9.44MB/s    0:04:50  1403551744  33%    8.85MB/s    0:05:08  1411153920  33%    8.31MB/s    0:05:27  1420328960  33%    8.13MB/s    0:05:33  1428193280  34%    7.77MB/s    0:05:48  1495564288  35%   21.56MB/s    0:02:02  1510768640  35%   23.54MB/s    0:01:51  1575518208  37%   36.46MB/s    0:01:10  1589444608  37%   37.90MB/s    0:01:07  1593081856  37%   22.89MB/s    0:01:51  1601208320  38%   21.21MB/s    0:01:59  1610645504  38%    8.28MB/s    0:05:05  1619066880  38%    6.98MB/s    0:06:00  1629257728  38%    8.49MB/s    0:04:55  1641578496  39%    9.50MB/s    0:04:23  1655209984  39%   10.46MB/s    0:03:57  1666220032  39%   11.04MB/s    0:03:44  1676705792  39%   11.13MB/s    0:03:41  1735950336  41%   22.21MB/s    0:01:48  1812234240  43%   37.08MB/s    0:01:02  1860993024  44%   46.09MB/s    0:00:49  1872527360  44%   46.46MB/s    0:00:48  1883537408  44%   34.92MB/s    0:01:04  1887764480  44%   14.71MB/s    0:02:33  1985544192  47%   24.27MB/s    0:01:29  2080702464  49%   40.62MB/s    0:00:50  2179792896  51%   58.01MB/s    0:00:34  2205745152  52%   69.87MB/s    0:00:27  2231697408  53%   52.72MB/s    0:00:36  2273902592  54%   41.43MB/s    0:00:45  2296676352  54%   24.98MB/s    0:01:14  2306113536  54%   22.98MB/s    0:01:20  2330001408  55%   23.13MB/s    0:01:18  2347008000  55%   17.13MB/s    0:01:45  2355396608  56%   13.75MB/s    0:02:10  2365227008  56%   13.99MB/s    0:02:08  2382692352  56%   12.09MB/s    0:02:26  2401796096  57%   12.59MB/s    0:02:19  2445836288  58%   20.87MB/s    0:01:22  2477326336  58%   25.87MB/s    0:01:05  2496167936  59%   27.00MB/s    0:01:01  2515566592  59%   27.04MB/s    0:01:00  2530770944  60%   20.09MB/s    0:01:21  2553839616  60%   18.06MB/s    0:01:29  2616295424  62%   28.36MB/s    0:00:54  2683895808  63%   39.79MB/s    0:00:37  2754674688  65%   53.18MB/s    0:00:26  2827223040  67%   65.07MB/s    0:00:20  2919301120  69%   72.12MB/s    0:00:17  2967764992  70%   67.54MB/s    0:00:17  2978512896  70%   52.98MB/s    0:00:22  2990047232  71%   38.50MB/s    0:00:30  3020226560  71%   19.96MB/s    0:00:57  3055255552  72%   17.35MB/s    0:01:04  3094642688  73%   23.04MB/s    0:00:46  3106177024  73%   23.01MB/s    0:00:46  3116662784  74%   22.80MB/s    0:00:46  3126624256  74%   16.84MB/s    0:01:02  3135799296  74%    9.72MB/s    0:01:46  3174629376  75%   16.22MB/s    0:01:01  3192193024  76%   17.83MB/s    0:00:55  3202121728  76%   17.69MB/s    0:00:55  3212869632  76%   18.07MB/s    0:00:53  3219685376  76%   10.54MB/s    0:01:30  3229646848  76%    8.80MB/s    0:01:47  3239870464  77%    8.92MB/s    0:01:45  3248521216  77%    8.41MB/s    0:01:50  3258482688  77%    9.14MB/s    0:01:40  3266347008  77%    8.66MB/s    0:01:45  3275784192  77%    8.50MB/s    0:01:46  3283943424  78%    8.34MB/s    0:01:47  3299901440  78%    9.77MB/s    0:01:29  3312222208  78%   10.80MB/s    0:01:20  3322970112  79%   11.03MB/s    0:01:17  3332669440  79%   11.47MB/s    0:01:13  3341844480  79%    9.85MB/s    0:01:25  3351805952  79%    9.30MB/s    0:01:29  3370418176  80%   11.24MB/s    0:01:12  3379331072  80%   11.04MB/s    0:01:12  3388243968  80%   11.01MB/s    0:01:11  3396632576  80%   10.59MB/s    0:01:14  3404496896  81%    8.05MB/s    0:01:36  3417374720  81%    9.01MB/s    0:01:24  3430711296  81%   10.01MB/s    0:01:15  3440934912  81%   10.48MB/s    0:01:10  3451420672  82%   11.10MB/s    0:01:05  3462955008  82%   10.77MB/s    0:01:06  3472916480  82%   10.00MB/s    0:01:11  3482091520  82%    9.77MB/s    0:01:11  3491004416  83%    9.32MB/s    0:01:14  3499950080  83%    8.72MB/s    0:01:18  3581739008  85%   25.66MB/s    0:00:23  3680337920  87%   46.86MB/s    0:00:10  3723001856  88%   54.93MB/s    0:00:08  3731390464  88%   54.76MB/s    0:00:08  3738730496  89%   36.95MB/s    0:00:12  3748691968  89%   16.07MB/s    0:00:27  3760488448  89%    8.87MB/s    0:00:48  3794042880  90%   14.83MB/s    0:00:26  3814227968  90%   17.96MB/s    0:00:20  3847815168  91%   23.60MB/s    0:00:14  3876093952  92%   27.37MB/s    0:00:11  3886055424  92%   21.72MB/s    0:00:14  3894968320  92%   18.88MB/s    0:00:15  3904143360  92%   13.15MB/s    0:00:21  3913318400  93%    8.74MB/s    0:00:32  3921707008  93%    8.36MB/s    0:00:32  3930619904  93%    8.43MB/s    0:00:31  3940483072  93%    8.61MB/s    0:00:29  3950968832  94%    8.92MB/s    0:00:27  3958931456  94%    8.80MB/s    0:00:26  3967680512  94%    8.79MB/s    0:00:25  3977281536  94%    8.70MB/s    0:00:25  3987767296  94%    8.63MB/s    0:00:24  3998515200  95%    9.30MB/s    0:00:21  4006903808  95%    9.19MB/s    0:00:20  4035477504  96%   13.60MB/s    0:00:11  4043636736  96%   12.93MB/s    0:00:11  4053303296  96%   12.73MB/s    0:00:11  4113137664  97%   24.75MB/s    0:00:03  4157636608  98%   28.48MB/s    0:00:01  4167335936  99%   29.28MB/s    0:00:01  4176773120  99%   28.97MB/s    0:00:00  4181491712  99%   15.86MB/s    0:00:01  4192239616  99%    8.04MB/s    0:00:00  4200000000 100%   19.41MB/s    0:03:26 (xfer#2, to-check=1/3)
+output_file.6.fam
+        2076 100%    2.45kB/s    0:00:00        2076 100%    2.45kB/s    0:00:00 (xfer#3, to-check=0/3)
+
+sent 5600685879 bytes  received 69 bytes  21582604.81 bytes/sec
+total size is 5600002079  speedup is 1.00
+sending incremental file list
+10.txt
+       32768   0%    0.00kB/s    0:00:00     8889012 100%    8.93MB/s    0:00:00 (xfer#1, to-check=0/1)
+
+sent 8890191 bytes  received 31 bytes  3556088.80 bytes/sec
+total size is 8889012  speedup is 1.00
+sending incremental file list
+climatic_variables.csv
+        4780 100%    0.00kB/s    0:00:00        4780 100%    0.00kB/s    0:00:00 (xfer#1, to-check=0/1)
+
+sent 4890 bytes  received 31 bytes  9842.00 bytes/sec
+total size is 4780  speedup is 0.97
+sending incremental file list
+lfmm.R
+        4284 100%    0.00kB/s    0:00:00        4284 100%    0.00kB/s    0:00:00 (xfer#1, to-check=0/1)
+
+sent 4378 bytes  received 31 bytes  8818.00 bytes/sec
+total size is 4284  speedup is 0.97
+Loading required package: permute
+Loading required package: lattice
+This is vegan 2.5-6
+Warning message:
+package ‘permute’ was built under R version 4.0.3 
+Registered S3 methods overwritten by 'tibble':
+  method     from  
+  format.tbl pillar
+  print.tbl  pillar
+
+Attaching package: ‘dplyr’
+
+The following objects are masked from ‘package:Biostrings’:
+
+    collapse, intersect, setdiff, setequal, union
+
+The following object is masked from ‘package:XVector’:
+
+    slice
+
+The following objects are masked from ‘package:IRanges’:
+
+    collapse, desc, intersect, setdiff, slice, union
+
+The following objects are masked from ‘package:S4Vectors’:
+
+    first, intersect, rename, setdiff, setequal, union
+
+The following objects are masked from ‘package:BiocGenerics’:
+
+    combine, intersect, setdiff, union
+
+The following objects are masked from ‘package:stats’:
+
+    filter, lag
+
+The following objects are masked from ‘package:base’:
+
+    intersect, setdiff, setequal, union
+
+── Attaching packages ─────────────────────────────────────── tidyverse 1.3.0 ──
+✔ ggplot2 3.3.2     ✔ purrr   0.3.4
+✔ tibble  3.0.3     ✔ stringr 1.4.0
+✔ tidyr   1.1.2     ✔ forcats 0.5.0
+✔ readr   1.4.0     
+── Conflicts ────────────────────────────────────────── tidyverse_conflicts() ──
+✖ dplyr::collapse()   masks Biostrings::collapse(), IRanges::collapse()
+✖ dplyr::combine()    masks BiocGenerics::combine()
+✖ purrr::compact()    masks XVector::compact()
+✖ dplyr::desc()       masks IRanges::desc()
+✖ tidyr::expand()     masks S4Vectors::expand()
+✖ dplyr::filter()     masks stats::filter()
+✖ dplyr::first()      masks S4Vectors::first()
+✖ dplyr::lag()        masks stats::lag()
+✖ ggplot2::Position() masks BiocGenerics::Position(), base::Position()
+✖ purrr::reduce()     masks IRanges::reduce()
+✖ dplyr::rename()     masks S4Vectors::rename()
+✖ dplyr::slice()      masks XVector::slice(), IRanges::slice()
+Warning messages:
+1: package ‘tidyverse’ was built under R version 4.0.3 
+2: package ‘purrr’ was built under R version 4.0.3 
+3: package ‘stringr’ was built under R version 4.0.3 
+
+Attaching package: ‘data.table’
+
+The following object is masked from ‘package:purrr’:
+
+    transpose
+
+The following objects are masked from ‘package:dplyr’:
+
+    between, first, last
+
+The following object is masked from ‘package:IRanges’:
+
+    shift
+
+The following objects are masked from ‘package:S4Vectors’:
+
+    first, second
+
+Extracting number of samples and rownames from output_file.6.fam...
+Extracting number of variants and colnames from output_file.6.bim...
+Read 1000000 items
+[1] "run lfmm using 2 PCs from PCA of climatic variables"
+null device 
+          1 
+Number of candidate k-mers: 159675sending incremental file list
+6_10/
+6_10/candidates.csv
+       32768   0%    0.00kB/s    0:00:00    13784667 100%  119.23MB/s    0:00:00 (xfer#1, to-check=1/3)
+6_10/lfmm_results.pdf
+        5660 100%   50.25kB/s    0:00:00        5660 100%   50.25kB/s    0:00:00 (xfer#2, to-check=0/3)
+
+sent 13792209 bytes  received 54 bytes  5516905.20 bytes/sec
+total size is 13790327  speedup is 1.00
