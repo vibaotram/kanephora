@@ -13,6 +13,12 @@ library(LEA)
 library(vcfR)
 library(tidyverse)
 library(data.table)
+library(lfmm)
+library(psych)
+library(car)
+library(GGally)
+library(viridis)
+library(vegan)
 ```
 
 ```{r, eval=FALSE}
@@ -21,17 +27,18 @@ setwd("/data/projects/rob/scripts/kmer")
 
 `k-mers can identify not only almost all associations found by SNPs and short indels but also SVs and variants in sequences not present in reference genomes`
 
-# Objectives:  
-1. detect k-mers under selection (associated with population structure)
-2. detect k-mers associated to local climate
+# Objectives:
 
-# Methods: 
-1. run Kiss on the african set (55 inds) -> confirm genetic structure with SNPs using snmf
+1.  detect k-mers under selection (associated with population structure)
+2.  detect k-mers associated to local climate
 
-2. run Kiss on the whole set (55 AF + 45 VN) -> select k-mers using 2 statistical methods
+# Methods:
 
-3. GEA
+1.  run Kiss on the african set (55 inds) -\> confirm genetic structure with SNPs using snmf
 
+2.  run Kiss on the whole set (55 AF + 45 VN) -\> select k-mers using 2 statistical methods
+
+3.  GEA
 
 ## Test Kiss on the african set
 
@@ -39,8 +46,8 @@ setwd("/data/projects/rob/scripts/kmer")
 sbatch /data/projects/rob/scripts/kiss_scripts/af_kiss_ci2.sh
 ```
 
-first I tried pcadapt with K=2  
-then I found from the scree plot that K = 7 should be a better value  
+first I tried pcadapt with K=2\
+then I found from the scree plot that K = 7 should be a better value\
 because it is the largest value before plateau and it is congruent with the cross entropy evaluation by snmf
 
 ### choose a random k-mer set
@@ -54,9 +61,11 @@ range_nb <- rand_set%%100 # 15
 scratch_dir <- "/scratch/kmer/af_kiss/results_ci2"
 tmp_dir <- "./tmp/af_ci2"
 ```
--> batch 4, subset 15
 
-###  download the corresponding bed file and kmer list file from /scratch
+-\> batch 4, subset 15
+
+### download the corresponding bed file and kmer list file from /scratch
+
 ```{bash}
 ssh node25
 rsync -vaurRP /scratch/kmer/af_kiss/results_ci2/./3.TABLE2BED/output_file.4.* /data/projects/rob/scripts/kmer/tmp/af_ci2
@@ -64,8 +73,8 @@ rsync -vaurRP  /scratch/kmer/af_kiss/results_ci2/./5.RANGES/output_file.4/15.txt
 rsync -vaurRP  /scratch/kmer/af_kiss/results_ci2/./6.PCADAPT/output_file.4_15_BH0.05.pcadapt.rplot.pdf /data/projects/rob/scripts/kmer/tmp/af_ci2
 ```
 
-
 ### read the files
+
 ```{r}
 bed_file <- file.path(tmp_dir, "3.TABLE2BED/output_file.4.bed")
 matrix <- BEDMatrix(bed_file)
@@ -79,19 +88,17 @@ kl <- scan(kmer_file)
 kmer_names_list=sort(kl) # kmer number by segment
 submat <- matrix[, sort(kl)]
 
-af_sample_file <- "/data/projects/rob/scripts/kiss/af_sample_name.txt"
+af_sample_file <- "/data/projects/rob/scripts/kiss_scripts/af_sample_name.txt"
 af_sample <- read.delim(af_sample_file)
 
-af_kiss_file <- "/data/projects/rob/scripts/kiss/af_sample.txt"
+af_kiss_file <- "/data/projects/rob/scripts/kiss_scripts/af_sample.txt"
 af_kiss <- read.delim(af_kiss_file)
 
 af_sample <- left_join(af_kiss %>% select(accession_id), af_sample)
 ```
 
-
-
-
 ### run snmf on the randomly selected kmer set
+
 ```{r}
 ## SNMF
 snmf_dir <- file.path(tmp_dir, "snmf")
@@ -145,6 +152,40 @@ ggplot(kmer_ref_prop) +
 ```
 
 
+```{r}
+k <- 6
+best_run <- which.min(cross.entropy(snmf_kmer, K = k))
+
+## plot ancestry proportion
+ind_order <- barchart(snmf_kmer, K = k, run = best_run, plot = F)
+kmer_ref_prop <- as.data.frame(Q(snmf_kmer, K = k, run = best_run))
+kmer_ref_prop$Label <- paste(af_sample$accession_id, af_sample$label, sep = "_")
+kmer_ref_prop$Label <- factor(kmer_ref_prop$Label, levels = unique(kmer_ref_prop$Label)[ind_order$order], ordered = F)
+kmer_ref_prop <- pivot_longer(kmer_ref_prop, cols = V1:V6, names_to = "ancestry", values_to = "proportion")
+
+ggplot(kmer_ref_prop) +
+  geom_col(aes(x = Label, y = proportion, fill = ancestry), position = position_stack(), width = .95, size = 0) + 
+  # scale_fill_viridis_d(end = .9)+
+  scale_fill_manual(values = turbo(7)) +
+  scale_x_discrete(expand = c(0,0)) +
+  scale_y_continuous(expand = c(0, 0)) +
+  ylab("Ancestry proportion")  +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 90, size = 10, hjust = 1),
+    axis.title.y = element_text(size = 12),
+    # axis.title.x = element_blank(),
+    legend.text = element_text(size = 12),
+    legend.title = element_text(size = 12),
+    legend.key.size = unit(5, "mm"),
+    axis.ticks.y = element_line(size = .1),
+    axis.text.y = element_text(size = 8),
+    panel.spacing = unit(2, "mm"),
+    # strip.text.x = element_text(angle = 90, size = 10, hjust = 1)
+    ) 
+```
+
+
 ### run snmf on window-based SNPs
 
 ```{bash}
@@ -170,7 +211,6 @@ ref_names <- sapply(ref_names, function(i) {
   return(paste(id, prior, sep = "_"))
 }, USE.NAMES = F)
 ```
-
 
 ```{r}
 snp_snmf <- load.snmfProject("/data/projects/rob/data/most_elai/snmf/thin_ref.snmfProject")
@@ -247,7 +287,8 @@ kmer_snp_cor <- full_join(kmer_ref_prop %>% rename(kmer = proportion),
   pull(correlation) %>% mean()
 cat("correlation between snmf of kmer set and snp set:", kmer_snp_cor)
 ```
--> very high correlation  
+
+-> very high correlation
 
 ### run pca on the snp set
 
@@ -290,7 +331,6 @@ ind_names <- sapply(ind_names, function(i) {
 }, USE.NAMES = F)
 ```
 
-
 ```{r}
 snp_geno_file <- "/data/projects/rob/data/most_elai/snmf/thin_all.geno"
 snp_pca <- pca(snp_geno_file)
@@ -318,14 +358,6 @@ dev.off()
 
 ## GEA
 
-```{r}
-library(lfmm)
-library(psych)
-library(car)
-library(GGally)
-library(viridis)
-library(vegan)
-```
 
 Below is a trial on a random k-mer set (batch 415) of the african data
 
@@ -338,6 +370,7 @@ clim <- clim %>% column_to_rownames("Label")
 ```
 
 the correlation of the "annual" variables
+
 ```{r}
 test_clim <- clim[, c(1,7,12)]
 pdf("/data/projects/rob/data/kmers/gea/annual_climate_correlation.pdf")
@@ -352,7 +385,6 @@ scatterplotMatrix(test_clim, groups = clim$snp_group)
 dev.off()
 ```
 
-
 ```{r}
 test_clim$snp_group <- factor(clim$snp_group, levels = c("ER", "OB", "C", "AG", "D", "hb"))
 ggpairs(test_clim, columns = 1:3, aes(color = snp_group)) + 
@@ -364,6 +396,7 @@ ggsave("gea/annual_climate_correlation_groups_gg.svg", width = 8, height = 8)
 ```
 
 the correlation of the variables maximizing the deviance (Tournebize et al. 2022)
+
 ```{r}
 test_clim <- clim[, c(2,10,12, 15, 18)]
 svg("/data/projects/rob/data/kmers/gea/deviance_climate_correlation.svg")
@@ -382,6 +415,28 @@ ggpairs(test_clim, columns = 1:5, aes(color = snp_group)) +
 ggsave("gea/deviance_climate_correlation_groups_gg.svg", width = 8, height = 8)
 ```
 
+distribution of all the variables by group
+```{r}
+# ggpairs(clim, columns = 1:19, aes(color = snp_group)) + 
+#   scale_color_manual(values = c(turbo(5), "gray")) +
+#   scale_fill_manual(values = c(turbo(5), "gray")) +
+#   theme_minimal() +
+#   theme(panel.background = element_rect(color = "gray"))
+
+clim %>% group_by(snp_group) %>% summarise(nb_inds = n())
+
+clim$snp_group <- factor(clim$snp_group, levels = c("hb", "ER", "OB", "C", "AG", "D"))
+clim[,c(1:19, ncol(clim))] %>% 
+  pivot_longer(cols = 1:19, names_to = "variable") %>% 
+  mutate(variable = factor(variable, 
+                           levels = str_sort(unique(variable), numeric = T))) %>% 
+  ggplot() +
+  facet_wrap(~ variable, ncol = 5, scale = "free") +
+  geom_density(aes(value, color = snp_group, fill = snp_group), alpha = 0.5) +
+  scale_color_manual(values = c("gray", turbo(5))) +
+  scale_fill_manual(values = c("gray", turbo(5))) +
+  theme_minimal()
+```
 
 ```{r}
 library(rnaturalearth)
@@ -415,7 +470,6 @@ ggplot(data = africa) +
         legend.key.height = unit(15, "pt"))
 ```
 
-
 ### elevation data (not working)
 
 ```{r}
@@ -425,7 +479,8 @@ elev <- get_elev_point(clim[,c(21,20)], prj = ll_prj)
 
 ```
 
-### genotype 
+### genotype
+
 ```{r}
 submat1 <- submat
 rownames(submat1) <- gsub("_.+", "", rownames(submat1))
@@ -444,6 +499,21 @@ pv <- lfmm_test(Y = submat1, X = clim[, 1:19],
                 lfmm = suball_lfmm, 
                 calibrate = "gif")
 hist(pv$calibrated.pvalue)
+
+test_lffm_res <- "./gea/lfmm/test_lfmm_results.pdf"
+pdf(test_lffm_res)
+for (i in 1:ncol(clim[, 1:19])) {
+  pvalues <- pv$calibrated.pvalue[,i]
+  hist(pvalues, 
+       main = paste0("Calibrated p-values for ", colnames(clim[, 1:19])[i], 
+                     " (GIF = ", sprintf("%.2f", pv$gif[i]), ")"),
+       xlab = "p-values")
+  qqplot(rexp(length(pvalues), rate = log(10)),
+       -log10(pvalues), xlab = "Expected quantile",
+       pch = 19, cex = .4)
+  abline(0,1)
+}
+dev.off()
 ```
 
 ```{r}
@@ -460,8 +530,7 @@ for (i in 1:19) {
   }
 ```
 
--> 507468 significant k-mers
--> the histogram seems fine but half of the k-mers are significant 
+-> 507468 significant k-mers -> the histogram seems fine but half of the k-mers are significant
 
 ### lfmm with only annual climatic variables
 
@@ -475,6 +544,7 @@ hist(pv_ann$calibrated.pvalue)
 signif_ann <- rownames(pv_ann$calibrated.pvalue)[sapply(1:nrow(pv_ann$calibrated.pvalue), function(i) any(pv_ann$calibrated.pvalue[i,] < 0.05))]
 length(unique(signif_ann))
 ```
+
 -> 263789 significant k-mers
 
 ### lfmm with pca axes
@@ -484,15 +554,24 @@ clim_pca <- rda(clim[,1:19], scale = T)
 summary(clim_pca)$cont
 round(scores(clim_pca, choices = 1:2, display = "species", scaling = 0), digits = 3)
 biplot(clim_pca)
-
 ```
 
 ```{r}
 clim_pca2 <- prcomp(clim[,1:19], scale = T)
 summary(clim_pca2)
 screeplot(clim_pca2)
+library(ggfortify)
+clim$snp_group <- factor(clim$snp_group, levels = c("ER", "OB", "C", "AG", "D", "hb"))
+autoplot(clim_pca2, x = 1, y = 3,
+         data = clim, colour = 'snp_group', size = 2,
+         loadings = TRUE, loadings.colour = 'blue',
+         loadings.label = TRUE, loadings.label.size = 6,
+         loadings.label.colour = "black", frame = T) +
+  theme_minimal() + 
+  scale_colour_manual(values = c(turbo(5), "gray")) +
+  scale_fill_manual(values = c(turbo(5), "gray")) 
+  
 ```
-
 
 ```{r}
 test_clim_pca <- clim[, c(12,14,17)]
@@ -513,7 +592,6 @@ ggpairs(clim, columns = c(1,5,8:10), aes(color = snp_group)) +
   theme_minimal() +
   theme(panel.background = element_rect(color = "gray"))
 ```
-
 
 ```{r}
 clim_PC1 <- scores(clim_pca, choices = 1, display = "sites", scaling = 0)
@@ -559,11 +637,13 @@ plot(-log10(pv_pca2$calibrated.pvalue[,2]),
       xlab = "k-mer", ylab = "-Log P",
       col = "grey")
 ```
+
 -> 144573 k-mers
 
-### genome-wide lfmm
+### genome-wide lfmm using pca of clim vars
 
 gather all the lfmm results for all the k-mer batches
+
 ```{r}
 lfmm_out <- "/data/projects/rob/scripts/kmer/gea/lfmm/out"
 lfmm_files <- list.files(lfmm_out, pattern = ".*.csv", full.names = T, recursive = T)
@@ -572,10 +652,47 @@ file.append(all_lfmm, lfmm_files)
 ```
 
 count the number of total candidate kmers
+
 ```{bash}
 wc -l /data/projects/rob/scripts/kmer/gea/lfmm/out/all_candidates.csv
 ```
+
 -> 218,269,911 k-mers (12%)
+
+### genome-wide lfmm using all the 19 clim vars
+we decided to use all the 19 variables since we can associate k-mers to each climatic variable  
+
+gather all the lfmm results for all the k-mer batches
+
+```{r}
+lfmm_out <- "/data/projects/rob/scripts/kmer/gea/lfmm/out"
+all_lfmm_dir <- "/data/projects/rob/scripts/kmer/gea/lfmm/all_bio"
+dir.create(all_lfmm_dir, showWarnings = T)
+lfmm_files <- list.files(lfmm_out, pattern = "_bio1.csv", full.names = T, recursive = T)
+all_lfmm <- file.path(all_lfmm_dir, "all_candidates_bio1.csv")
+file.append(all_lfmm, lfmm_files)
+
+for (i in 1:19) {
+  lfmm_files <- list.files(lfmm_out, pattern = paste0("_bio", i, ".csv"), 
+                           full.names = T, recursive = T)
+
+}
+n <- 1728
+expect <- sapply(1:n, function(r) {
+  if (r%%100 == 0) {
+    b <- r/100-1
+    s <- 100
+  } else {
+    b <- r%/%100
+    s <- r%%100
+  }
+  return(paste(b, s, sep = "_"))
+})
+length(expect)
+real <- dirname(list.files(lfmm_out, "bio1.csv", full.names = F, recursive = T))
+length(real)
+expect[!expect%in%real]
+```
 
 ### RDA
 
@@ -607,11 +724,11 @@ length(cand2)
 signif_rda <- unique(names(c(cand1, cand2)))
 ```
 
--> 132070 candidate k-mers
+-\> 132070 candidate k-mers
 
 ```{r}
 length(signif_pca2[signif_pca2 %in% signif_rda])
 length(signif_rda[signif_rda %in% signif_pca2])
 ```
--> only 40835 common k-mers
 
+-\> only 40835 common k-mers
