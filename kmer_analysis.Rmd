@@ -42,7 +42,7 @@ setwd("/data/projects/rob/scripts/kmer")
 
 ## Test Kiss on the african set
 
-```{r}
+```{bash}
 sbatch /data/projects/rob/scripts/kiss_scripts/af_kiss_ci2.sh
 ```
 
@@ -55,8 +55,8 @@ because it is the largest value before plateau and it is congruent with the cros
 ```{r}
 set.seed(123)
 rand_set <- sample(1:1728, 1) # 415
-bed_nb <- rand_set%/%100 # 4
-range_nb <- rand_set%%100 # 15
+bed_nb <- rand_set %/% 100 # 4
+range_nb <- rand_set %% 100 # 15
 
 scratch_dir <- "/scratch/kmer/af_kiss/results_ci2"
 tmp_dir <- "./tmp/af_ci2"
@@ -85,7 +85,7 @@ bim <- read_delim(bim_file, delim = "\t", col_names = F)
 kmer_file <- file.path(tmp_dir, "5.RANGES/output_file.4/15.txt")
 kl <- scan(kmer_file)
 
-kmer_names_list=sort(kl) # kmer number by segment
+kmer_names_list <- sort(kl) # kmer number by segment
 submat <- matrix[, sort(kl)]
 
 af_sample_file <- "/data/projects/rob/scripts/kiss_scripts/af_sample_name.txt"
@@ -358,6 +358,23 @@ dev.off()
 
 ## GEA
 
+for working on IFB: transfer kiss results from Itrop
+```{bash update_ifb}
+cd /shared/projects/most_kmer
+mkdir kiss_out
+rsync -vaurP baotram@bioinfo-nas2.ird.fr:/data/projects/rob/scripts/kmer/gea/tmp/* kiss_out/
+mkdir -p /shared/projects/most_kmer/afterkiss/gea/lfmm/log
+sbatch /shared/projects/most_kmer/afterkiss/gea/lfmm/run_lfmm_af_IFB.sh
+```
+
+```{bash}
+ssh baotram@core.cluster.france-bioinformatique.fr
+module load singularity
+singularity exec -B /shared/home/baotram \
+/shared/projects/vietcaf/rserver/Singularity.R_4-2-0-Rserver_2022.sif \
+Rscript /shared/projects/most_kmer/afterkiss/gea/lfmm/install_packages.R
+```
+
 
 Below is a trial on a random k-mer set (batch 415) of the african data
 
@@ -524,7 +541,7 @@ u <- 0
 for (i in 1:19) {
   cat(paste0("bio", i, ": "))
   v <- length(rownames(pv$calibrated.pvalue)[pv$calibrated.pvalue[,i] < 0.05])
-  u <- u+v
+  u <- u + v
   cat(v)
   cat("\n")
   }
@@ -679,19 +696,19 @@ for (i in 1:19) {
 }
 n <- 1728
 expect <- sapply(1:n, function(r) {
-  if (r%%100 == 0) {
-    b <- r/100-1
+  if (r %% 100 == 0) {
+    b <- r/100 - 1
     s <- 100
   } else {
-    b <- r%/%100
-    s <- r%%100
+    b <- r %/% 100
+    s <- r %% 100
   }
   return(paste(b, s, sep = "_"))
 })
 length(expect)
 real <- dirname(list.files(lfmm_out, "bio1.csv", full.names = F, recursive = T))
 length(real)
-expect[!expect%in%real]
+expect[!expect %in% real]
 ```
 
 ### RDA

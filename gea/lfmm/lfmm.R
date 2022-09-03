@@ -5,14 +5,17 @@
 ######### 1, run pca on the climatic data (optional)
 ######### 2, run lfmm with the genetic matrix and clim variables in 2 ways: using PCA of clim variables, or all the variables
 
+.libPaths("/shared/home/baotram/R/x86_64-pc-linux-gnu-library/4.0")
 
+
+## load packages
 suppressPackageStartupMessages(library(optparse))
 suppressPackageStartupMessages(library(Biostrings))
-library(lfmm)
-library(vegan)
-library(BEDMatrix)
-library(tidyverse)
-library(data.table)
+suppressPackageStartupMessages(library(lfmm))
+suppressPackageStartupMessages(library(vegan))
+suppressPackageStartupMessages(library(BEDMatrix))
+suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(data.table))
 
 option_list <- list(
   make_option(c("-b", "--bedFile"),
@@ -92,7 +95,7 @@ pv <- lfmm_test(Y = submat, X = expl,
                      calibrate = "gif")
 
 lfmmplot <- file.path(outdir, "lfmm_results.pdf")
-pdf(file=lfmmplot)
+pdf(file = lfmmplot)
 for (i in 1:ncol(expl)) {
   pvalues <- pv$calibrated.pvalue[,i]
   hist(pvalues, 
@@ -139,7 +142,7 @@ for (c in 1:ncol(pv$calibrated.pvalue)) {
   cat("Number of candidate k-mers associated with", colnames(pv$calibrated.pvalue)[c], "is", length(cands), "\n")
   
   candfile <-  file.path(outdir, paste0("candidates_", colnames(pv$calibrated.pvalue)[c],".csv"))
-  write.table(cands_df, candfile, quote = FALSE, sep="\t", row.names = F, col.names = F)
+  write.table(cands_df, candfile, quote = FALSE, sep = "\t", row.names = F, col.names = F)
 }
 
 tot_cands <- pv$calibrated.pvalue[sapply(1:nrow(pv$calibrated.pvalue), function(i) any(pv$calibrated.pvalue[i,] < 0.05)),]
