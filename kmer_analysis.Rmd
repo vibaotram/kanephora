@@ -358,22 +358,6 @@ dev.off()
 
 ## GEA
 
-for working on IFB: transfer kiss results from Itrop
-```{bash update_ifb}
-cd /shared/projects/most_kmer
-mkdir kiss_out
-rsync -vaurP baotram@bioinfo-nas2.ird.fr:/data/projects/rob/scripts/kmer/gea/tmp/* kiss_out/
-mkdir -p /shared/projects/most_kmer/afterkiss/gea/lfmm/log
-sbatch /shared/projects/most_kmer/afterkiss/gea/lfmm/run_lfmm_af_IFB.sh
-```
-
-```{bash}
-ssh baotram@core.cluster.france-bioinformatique.fr
-module load singularity
-singularity exec -B /shared/home/baotram \
-/shared/projects/vietcaf/rserver/Singularity.R_4-2-0-Rserver_2022.sif \
-Rscript /shared/projects/most_kmer/afterkiss/gea/lfmm/install_packages.R
-```
 
 
 Below is a trial on a random k-mer set (batch 415) of the african data
@@ -492,7 +476,8 @@ ggplot(data = africa) +
 ```{r}
 library(elevatr)
 ll_prj <- "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"
-elev <- get_elev_point(clim[,c(21,20)], prj = ll_prj)
+ll_prj <- "+proj=longlat +datum=WGS84"
+elev <- get_elev_point(as.data.frame(clim[,c(21,20)]), prj = ll_prj)
 
 ```
 
@@ -679,10 +664,36 @@ wc -l /data/projects/rob/scripts/kmer/gea/lfmm/out/all_candidates.csv
 ### genome-wide lfmm using all the 19 clim vars
 we decided to use all the 19 variables since we can associate k-mers to each climatic variable  
 
+
+for working on IFB: transfer kiss results from Itrop to IFB  
+(because running 1728 independent jobs on IFB is much x3000 faster)
+```{bash update_ifb}
+cd /shared/projects/most_kmer
+mkdir kiss_out
+rsync -vaurP baotram@bioinfo-nas2.ird.fr:/data/projects/rob/scripts/kmer/gea/tmp/* kiss_out/
+mkdir -p /shared/projects/most_kmer/afterkiss/gea/lfmm/log
+sbatch /shared/projects/most_kmer/afterkiss/gea/lfmm/run_lfmm_af_IFB.sh
+```
+
+```{bash}
+ssh baotram@core.cluster.france-bioinformatique.fr
+module load singularity
+singularity exec -B /shared/home/baotram \
+/shared/projects/vietcaf/rserver/Singularity.R_4-2-0-Rserver_2022.sif \
+Rscript /shared/projects/most_kmer/afterkiss/gea/lfmm/install_packages.R
+```
+
+then, transfer lfmm results from IFB to Itrop
+```{bash}
+rsync -vaurP baotram@core.cluster.france-bioinformatique.fr:/shared/projects/most_kmer/afterkiss/gea/lfmm/out_K5 /data/projects/rob/scripts/kmer/gea/lfmm/
+rsync -vaurP baotram@core.cluster.france-bioinformatique.fr:/shared/projects/most_kmer/afterkiss/gea/lfmm/log/* /data/projects/rob/scripts/kmer/gea/lfmm/log_K5
+```
+
+
 gather all the lfmm results for all the k-mer batches
 
 ```{r}
-lfmm_out <- "/data/projects/rob/scripts/kmer/gea/lfmm/out"
+lfmm_out <- "/data/projects/rob/scripts/kmer/gea/lfmm/out_K5"
 all_lfmm_dir <- "/data/projects/rob/scripts/kmer/gea/lfmm/all_bio"
 dir.create(all_lfmm_dir, showWarnings = T)
 lfmm_files <- list.files(lfmm_out, pattern = "_bio1.csv", full.names = T, recursive = T)
