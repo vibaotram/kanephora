@@ -39,17 +39,21 @@ worldclim data from 1960 to 1990 averages
 # point <- SpatialPoints(data.frame(long = na.omit(samples$Long)[1:2], lat = na.omit(samples$Lat)[1:2]), proj4string = clim@crs)
 # extract(clim, point)
 
-climvar <- do.call(rbind, lapply(1:nrow(samples), function(i) {
+envirvar <- do.call(rbind, lapply(1:nrow(samples), function(i) {
   clim <- getData(name = "worldclim", var = "bio", res = 0.5, lat = na.omit(samples$Lat)[i], lon = na.omit(samples$Long)[i])
   elev <- getData(name = "SRTM", lat = na.omit(samples$Lat)[i], lon = na.omit(samples$Long)[i])
   point <- SpatialPoints(data.frame(long = na.omit(samples$Long)[i], lat = na.omit(samples$Lat)[i]), proj4string = clim@crs)
   clim_values <- extract(clim, point)
   elev_value <- extract(elev, point)
   colnames(clim_values) <- gsub("_.+", "", colnames(clim_values))
-  df <- data.frame(Label = samples$Label[i], clim_values, elevation = elev_value)
+  df <- data.frame(Label = gsub("_.+", "", samples$Label[i]), 
+                   clim_values, 
+                   elevation = elev_value,
+                   Long = samples$Long[i], Lat = samples$Lat[i],
+                   snp_group = samples$kasp_group[i])
   return(df)
 }))
-write.csv(climvar, "climatic_variables.csv")
+write.csv(envirvar, "./gea/climatic_variables.csv", row.names = F)
 ```
 
 ```{r}
@@ -78,5 +82,4 @@ af_clim <- raster::mask(all_clim, af_geo)
 plot(af_clim, xlim = c(-20, 40), ylim = c(-15, 15), axes = F, 
      col = viridis::cividis(100), add = T)
 
-raster::
 ```
