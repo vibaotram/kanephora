@@ -9,3 +9,6 @@ tmp/*
 */*.csv
 *.log
 */*.pdf
+*.rds
+*.svg
+*wc*

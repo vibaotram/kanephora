@@ -1,0 +1,80 @@
+---
+title: "genotype environment association"
+author: "Tram"
+date: "7/6/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(raster)
+library(data.table)
+library(dplyr)
+```
+
+## Genotype samples
+
+55 African individuals
+
+```{r}
+samples <- fread("/home/baotram/phd/robusta/test_10_clones/sequence_info_final.tsv")
+samples <- samples %>% filter(!is.na(Lat))
+```
+
+```{r}
+library(ggmap)
+sbbox <- make_bbox(lon = samples$Long, lat = samples$Lat, f = .1)
+sq_map <- get_map(location = sbbox, maptype = "satellite", source = "google")
+ggmap(sq_map) + 
+  geom_point(data = samples, mapping = aes(x = Long, y = Lat), color = "red3") +
+  geom_density(data = samples, mapping = aes(x = Long, y = Lat))
+```
+
+## Climatic data
+
+worldclim data from 1960 to 1990 averages
+
+```{r}
+# clim <- getData(name = "worldclim", var = "bio", res = 0.5, lat = na.omit(samples$Lat)[1:2], lon = na.omit(samples$Long)[1:2])
+# point <- SpatialPoints(data.frame(long = na.omit(samples$Long)[1:2], lat = na.omit(samples$Lat)[1:2]), proj4string = clim@crs)
+# extract(clim, point)
+
+climvar <- do.call(rbind, lapply(1:nrow(samples), function(i) {
+  clim <- getData(name = "worldclim", var = "bio", res = 0.5, lat = na.omit(samples$Lat)[i], lon = na.omit(samples$Long)[i])
+  point <- SpatialPoints(data.frame(long = na.omit(samples$Long)[i], lat = na.omit(samples$Lat)[i]), proj4string = clim@crs)
+  values <- extract(clim, point)
+  colnames(values) <- gsub("_.+", "", colnames(values))
+  df <- data.frame(Label = samples$Label[i], values)
+  return(df)
+}))
+write.csv(climvar, "climatic_variables.csv")
+```
+
+```{r}
+library(gplots)
+library(viridisLite)
+heatmap.2(clim_cor, dendrogram = "row",
+          trace = "none", density.info = "none", col = rocket(200))
+```
+
+## raster
+
+```{r}
+library(raster)
+library(rgdal)
+
+af_ctrs <- c("Ghana", "Guinea", "CI", "Togo", "Benin", "Nigeria", 
+              "Cameroon", "Gabon", "Congo", "CAF", "COD", "Uganda", "Angola")
+
+all_clim <- getData(name = "worldclim", var = "bio", res = 2.5)
+af_geo <- do.call(bind, lapply(af_ctrs, function(ct) {
+  print(ct)
+  getData("GADM", country = ct, level = 0)
+  }))
+
+af_clim <- raster::mask(all_clim, af_geo)
+plot(af_clim, xlim = c(-20, 40), ylim = c(-15, 15), axes = F, 
+     col = viridis::cividis(100), add = T)
+
+raster::
+```
