@@ -102,20 +102,15 @@ for (i in 1:ncol(expl)) {
        main = paste0("Calibrated p-values for ", colnames(expl)[i], 
                      " (GIF = ", sprintf("%.2f", pv$gif[i]), ")"),
        xlab = "p-values")
-  # qqplot(rexp(length(pvalues), rate = log(10)),
-  #        -log10(pvalues), xlab = "Expected quantile",
-  #        pch = 19, cex = .4)
 }
 
-# plot(-log10(pv_pca2$calibrated.pvalue[,1]), 
-#      pch = 19, 
-#      cex = .2, 
-#      xlab = "k-mer", ylab = "-Log P",
-#      col = "grey")
-# points(-log10(pv_pca2$calibrated.pvalue[,2]), 
-#        pch = 19, 
-#        cex = .2, 
-#        col = "grey")
+# for (i in 1:ncol(expl)) {
+#   pvalues <- pv$calibrated.pvalue[,i]
+#   qqplot(rexp(length(pvalues), rate = log(10)),
+#          -log10(pvalues), xlab = "Expected quantile",
+#          pch = 19, cex = .4)
+# }
+
 dev.off()
 
 ## output all candidates together (to be deprecated)

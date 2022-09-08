@@ -365,9 +365,23 @@ Below is a trial on a random k-mer set (batch 415) of the african data
 ### environment variables
 
 ```{r}
-clim_file <- "/data/projects/rob/data/kmers/gea/climatic_variables.csv"
+clim_file <- "./gea/climatic_variables.csv"
 clim <- fread(clim_file, data.table = T)
+write.csv(clim[,1:21], "./gea/lfmm/lfmm_explanatory.csv", 
+          row.names = F, quote = F)
 clim <- clim %>% column_to_rownames("Label")
+
+clim <- clim %>% 
+  mutate(snp_group = case_when(snp_group %in% c("A", "G") ~ "AG",
+                               snp_group %in% c("E", "R") ~ "ER",
+                               snp_group %in% c("O", "B") ~ "OB",
+                               TRUE ~ snp_group))
+```
+
+
+```{r}
+pairs.panels(clim[,1:20], hist.col = "royalblue", ellipses = F)
+
 ```
 
 the correlation of the "annual" variables
@@ -427,8 +441,8 @@ distribution of all the variables by group
 clim %>% group_by(snp_group) %>% summarise(nb_inds = n())
 
 clim$snp_group <- factor(clim$snp_group, levels = c("hb", "ER", "OB", "C", "AG", "D"))
-clim[,c(1:19, ncol(clim))] %>% 
-  pivot_longer(cols = 1:19, names_to = "variable") %>% 
+clim[,c(1:20, ncol(clim))] %>% 
+  pivot_longer(cols = 1:20, names_to = "variable") %>% 
   mutate(variable = factor(variable, 
                            levels = str_sort(unique(variable), numeric = T))) %>% 
   ggplot() +
@@ -438,6 +452,8 @@ clim[,c(1:19, ncol(clim))] %>%
   scale_fill_manual(values = c("gray", turbo(5))) +
   theme_minimal()
 ```
+
+
 
 ```{r}
 library(rnaturalearth)
@@ -559,19 +575,30 @@ biplot(clim_pca)
 ```
 
 ```{r}
-clim_pca2 <- prcomp(clim[,1:19], scale = T)
+clim_pca2 <- prcomp(clim[,1:20], scale = T)
 summary(clim_pca2)
 screeplot(clim_pca2)
 library(ggfortify)
-clim$snp_group <- factor(clim$snp_group, levels = c("ER", "OB", "C", "AG", "D", "hb"))
+clim$snp_group <- factor(clim$snp_group, levels = c("hb","ER", "OB", "C", "AG", "D"))
+## PC1 vs PC2
+autoplot(clim_pca2, x = 1, y = 2,
+         data = clim, colour = 'snp_group', size = 2,
+         loadings = TRUE, loadings.colour = 'blue',
+         loadings.label = TRUE, loadings.label.size = 6,
+         loadings.label.colour = "black", frame = T) +
+  theme_minimal() + 
+  scale_colour_manual(values = c("gray", turbo(5))) +
+  scale_fill_manual(values = c("gray", turbo(5))) 
+
+## PC1 vs PC2
 autoplot(clim_pca2, x = 1, y = 3,
          data = clim, colour = 'snp_group', size = 2,
          loadings = TRUE, loadings.colour = 'blue',
          loadings.label = TRUE, loadings.label.size = 6,
          loadings.label.colour = "black", frame = T) +
   theme_minimal() + 
-  scale_colour_manual(values = c(turbo(5), "gray")) +
-  scale_fill_manual(values = c(turbo(5), "gray")) 
+  scale_colour_manual(values = c("gray", turbo(5))) +
+  scale_fill_manual(values = c("gray", turbo(5))) 
   
 ```
 
@@ -690,21 +717,12 @@ rsync -vaurP baotram@core.cluster.france-bioinformatique.fr:/shared/projects/mos
 ```
 
 
-gather all the lfmm results for all the k-mer batches
-
+check if all the runs have finished
 ```{r}
-lfmm_out <- "/data/projects/rob/scripts/kmer/gea/lfmm/out_K5"
-all_lfmm_dir <- "/data/projects/rob/scripts/kmer/gea/lfmm/all_bio"
-dir.create(all_lfmm_dir, showWarnings = T)
-lfmm_files <- list.files(lfmm_out, pattern = "_bio1.csv", full.names = T, recursive = T)
-all_lfmm <- file.path(all_lfmm_dir, "all_candidates_bio1.csv")
-file.append(all_lfmm, lfmm_files)
+lfmm_out <- "./gea/lfmm/out_K5"
+real <- dirname(list.files(lfmm_out, "bio1.csv", full.names = F, recursive = T))
+length(real)
 
-for (i in 1:19) {
-  lfmm_files <- list.files(lfmm_out, pattern = paste0("_bio", i, ".csv"), 
-                           full.names = T, recursive = T)
-
-}
 n <- 1728
 expect <- sapply(1:n, function(r) {
   if (r %% 100 == 0) {
@@ -717,15 +735,48 @@ expect <- sapply(1:n, function(r) {
   return(paste(b, s, sep = "_"))
 })
 length(expect)
-real <- dirname(list.files(lfmm_out, "bio1.csv", full.names = F, recursive = T))
-length(real)
+
+# files that haven't finished
 expect[!expect %in% real]
 ```
+
+
+gather all the lfmm results for all the k-mer batches using the results directly
+```{r}
+all_lfmm_dir <- "./gea/lfmm/all_bio"
+dir.create(all_lfmm_dir, showWarnings = T)
+lfmm_files <- list.files(lfmm_out, pattern = "_bio1.csv", full.names = T, recursive = T)
+all_lfmm <- file.path(all_lfmm_dir, "all_candidates_bio1.csv")
+file.append(all_lfmm, lfmm_files)
+
+for (i in 1:19) {
+  lfmm_files <- list.files(lfmm_out, pattern = paste0("_bio", i, ".csv"), 
+                           full.names = T, recursive = T)
+
+}
+
+```
+
+
+gather all the lfmm results for all the k-mer batches using the log files (faster i think)
+```{r}
+log_K5 <- "./gea/lfmm/log_K5"
+log_files <- list.files(log_K5, pattern = ".log", full.names = T)
+cand_kmers <- rowSums(do.call(cbind, lapply(1:n, function(i) {
+  df <- fread(log_files[i], skip = 10, nrows = 19, sep = " ", 
+              select = c(7, 9), col.names = c("var", i),
+              data.table = FALSE)
+  df <- df %>% column_to_rownames("var")
+  })
+  ))
+cand_kmers <- format(as.data.frame(cand_kmers), big.mark = ",")
+```
+
 
 ### RDA
 
 ```{r}
-sub_rda <- rda(submat1 ~ ., data = clim[, 1:19], scale = T)
+sub_rda <- rda(submat1 ~ ., data = clim[, 1:20], scale = T)
 summary(sub_rda)$concont
 RsquareAdj(sub_rda)
 screeplot(sub_rda)
