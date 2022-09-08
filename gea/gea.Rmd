@@ -41,10 +41,12 @@ worldclim data from 1960 to 1990 averages
 
 climvar <- do.call(rbind, lapply(1:nrow(samples), function(i) {
   clim <- getData(name = "worldclim", var = "bio", res = 0.5, lat = na.omit(samples$Lat)[i], lon = na.omit(samples$Long)[i])
+  elev <- getData(name = "SRTM", lat = na.omit(samples$Lat)[i], lon = na.omit(samples$Long)[i])
   point <- SpatialPoints(data.frame(long = na.omit(samples$Long)[i], lat = na.omit(samples$Lat)[i]), proj4string = clim@crs)
-  values <- extract(clim, point)
-  colnames(values) <- gsub("_.+", "", colnames(values))
-  df <- data.frame(Label = samples$Label[i], values)
+  clim_values <- extract(clim, point)
+  elev_value <- extract(elev, point)
+  colnames(clim_values) <- gsub("_.+", "", colnames(clim_values))
+  df <- data.frame(Label = samples$Label[i], clim_values, elevation = elev_value)
   return(df)
 }))
 write.csv(climvar, "climatic_variables.csv")
