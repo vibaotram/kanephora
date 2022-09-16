@@ -34,9 +34,9 @@ setwd("/data/projects/rob/scripts/kmer")
 
 # Methods:
 
-1.  run Kiss on the african set (55 inds) -\> confirm genetic structure with SNPs using snmf
+1.  run Kiss on the african set (55 inds) -> confirm genetic structure with SNPs using snmf
 
-2.  run Kiss on the whole set (55 AF + 45 VN) -\> select k-mers using 2 statistical methods
+2.  run Kiss on the whole set (55 AF + 45 VN) -> select k-mers using 2 statistical methods
 
 3.  GEA
 
@@ -59,10 +59,11 @@ bed_nb <- rand_set %/% 100 # 4
 range_nb <- rand_set %% 100 # 15
 
 scratch_dir <- "/scratch/kmer/af_kiss/results_ci2"
-tmp_dir <- "./tmp/af_ci2"
+kiss_dir <- "./tmp/af_ci2"
+kiss_dir <- "/shared/projects/most_kmer/kiss_out"
 ```
 
--\> batch 4, subset 15
+-> batch 4, subset 15
 
 ### download the corresponding bed file and kmer list file from /scratch
 
@@ -76,22 +77,22 @@ rsync -vaurRP  /scratch/kmer/af_kiss/results_ci2/./6.PCADAPT/output_file.4_15_BH
 ### read the files
 
 ```{r}
-bed_file <- file.path(tmp_dir, "3.TABLE2BED/output_file.4.bed")
+bed_file <- file.path(kiss_dir, "3.TABLE2BED/output_file.4.bed")
 matrix <- BEDMatrix(bed_file)
 
-bim_file <- file.path(tmp_dir, "3.TABLE2BED/output_file.4.bim")
-bim <- read_delim(bim_file, delim = "\t", col_names = F)
+# bim_file <- file.path(kiss_dir, "3.TABLE2BED/output_file.4.bim")
+# bim <- read_delim(bim_file, delim = "\t", col_names = F)
 
-kmer_file <- file.path(tmp_dir, "5.RANGES/output_file.4/15.txt")
+kmer_file <- file.path(kiss_dir, "5.RANGES/output_file.4/15.txt")
 kl <- scan(kmer_file)
 
 kmer_names_list <- sort(kl) # kmer number by segment
 submat <- matrix[, sort(kl)]
 
-af_sample_file <- "/data/projects/rob/scripts/kiss_scripts/af_sample_name.txt"
+af_sample_file <- "./af_sample_name.txt"
 af_sample <- read.delim(af_sample_file)
 
-af_kiss_file <- "/data/projects/rob/scripts/kiss_scripts/af_sample.txt"
+af_kiss_file <- "./af_sample.txt"
 af_kiss <- read.delim(af_kiss_file)
 
 af_sample <- left_join(af_kiss %>% select(accession_id), af_sample)
@@ -151,7 +152,6 @@ ggplot(kmer_ref_prop) +
     ) 
 ```
 
-
 ```{r}
 k <- 6
 best_run <- which.min(cross.entropy(snmf_kmer, K = k))
@@ -184,7 +184,6 @@ ggplot(kmer_ref_prop) +
     # strip.text.x = element_text(angle = 90, size = 10, hjust = 1)
     ) 
 ```
-
 
 ### run snmf on window-based SNPs
 
@@ -358,8 +357,6 @@ dev.off()
 
 ## GEA
 
-
-
 Below is a trial on a random k-mer set (batch 415) of the african data
 
 ### environment variables
@@ -367,8 +364,8 @@ Below is a trial on a random k-mer set (batch 415) of the african data
 ```{r}
 clim_file <- "./gea/climatic_variables.csv"
 clim <- fread(clim_file, data.table = T)
-write.csv(clim[,1:21], "./gea/lfmm/lfmm_explanatory.csv", 
-          row.names = F, quote = F)
+# write.csv(clim[,1:21], "./gea/lfmm/lfmm_explanatory.csv", 
+#           row.names = F, quote = F)
 clim <- clim %>% column_to_rownames("Label")
 
 clim <- clim %>% 
@@ -377,7 +374,6 @@ clim <- clim %>%
                                snp_group %in% c("O", "B") ~ "OB",
                                TRUE ~ snp_group))
 ```
-
 
 ```{r}
 pairs.panels(clim[,1:20], hist.col = "royalblue", ellipses = F)
@@ -431,6 +427,7 @@ ggsave("gea/deviance_climate_correlation_groups_gg.svg", width = 8, height = 8)
 ```
 
 distribution of all the variables by group
+
 ```{r}
 # ggpairs(clim, columns = 1:19, aes(color = snp_group)) + 
 #   scale_color_manual(values = c(turbo(5), "gray")) +
@@ -452,8 +449,6 @@ clim[,c(1:20, ncol(clim))] %>%
   scale_fill_manual(values = c("gray", turbo(5))) +
   theme_minimal()
 ```
-
-
 
 ```{r}
 library(rnaturalearth)
@@ -487,16 +482,6 @@ ggplot(data = africa) +
         legend.key.height = unit(15, "pt"))
 ```
 
-### elevation data (not working)
-
-```{r}
-library(elevatr)
-ll_prj <- "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"
-ll_prj <- "+proj=longlat +datum=WGS84"
-elev <- get_elev_point(as.data.frame(clim[,c(21,20)]), prj = ll_prj)
-
-```
-
 ### genotype
 
 ```{r}
@@ -508,26 +493,27 @@ submat1 <- submat1[rownames(submat1) %in% rownames(clim),]
 ### lfmm with all variables
 
 ```{r}
-k <- 7 # based on pcadapt and snmf results
+k <- 5 # based on pcadapt and snmf results
 ```
 
 ```{r}
-suball_lfmm <- lfmm_ridge(Y = submat1, X = clim[, 1:19], K = k)
-pv <- lfmm_test(Y = submat1, X = clim[, 1:19], 
+suball_lfmm <- lfmm_ridge(Y = submat1, X = clim[, 1:20], K = k)
+pv <- lfmm_test(Y = submat1, X = clim[, 1:20], 
                 lfmm = suball_lfmm, 
-                calibrate = "gif")
+                calibrate = "median+MAD")
 hist(pv$calibrated.pvalue)
 
-test_lffm_res <- "./gea/lfmm/test_lfmm_results.pdf"
+test_lffm_res <- "./gea/test_lfmm_results.pdf"
 pdf(test_lffm_res)
-for (i in 1:ncol(clim[, 1:19])) {
+for (i in 1:ncol(clim[, 1:20])) {
   pvalues <- pv$calibrated.pvalue[,i]
-  hist(pvalues, 
-       main = paste0("Calibrated p-values for ", colnames(clim[, 1:19])[i], 
-                     " (GIF = ", sprintf("%.2f", pv$gif[i]), ")"),
-       xlab = "p-values")
+  # hist(pvalues, 
+  #      main = paste0("Calibrated p-values for ", colnames(clim[, 1:20])[i], 
+  #                    " (GIF = ", sprintf("%.2f", pv$gif[i]), ")"),
+  #      xlab = "p-values")
   qqplot(rexp(length(pvalues), rate = log(10)),
-       -log10(pvalues), xlab = "Expected quantile",
+       -log10(pvalues), 
+       xlab = "Expected quantile", main = colnames(clim[, 1:20])[i], 
        pch = 19, cex = .4)
   abline(0,1)
 }
@@ -689,11 +675,12 @@ wc -l /data/projects/rob/scripts/kmer/gea/lfmm/out/all_candidates.csv
 -> 218,269,911 k-mers (12%)
 
 ### genome-wide lfmm using all the 19 clim vars
-we decided to use all the 19 variables since we can associate k-mers to each climatic variable  
 
+we decided to use all the 19 variables since we can associate k-mers to each climatic variable
 
-for working on IFB: transfer kiss results from Itrop to IFB  
+for working on IFB: transfer kiss results from Itrop to IFB\
 (because running 1728 independent jobs on IFB is much x3000 faster)
+
 ```{bash update_ifb}
 cd /shared/projects/most_kmer
 mkdir kiss_out
@@ -711,16 +698,17 @@ Rscript /shared/projects/most_kmer/afterkiss/gea/lfmm/install_packages.R
 ```
 
 then, transfer lfmm results from IFB to Itrop
+
 ```{bash}
 rsync -vaurP baotram@core.cluster.france-bioinformatique.fr:/shared/projects/most_kmer/afterkiss/gea/lfmm/out_K5 /data/projects/rob/scripts/kmer/gea/lfmm/
 rsync -vaurP baotram@core.cluster.france-bioinformatique.fr:/shared/projects/most_kmer/afterkiss/gea/lfmm/log/* /data/projects/rob/scripts/kmer/gea/lfmm/log_K5
 ```
 
-
 check if all the runs have finished
+
 ```{r}
 lfmm_out <- "./gea/lfmm/out_K5"
-real <- dirname(list.files(lfmm_out, "bio1.csv", full.names = F, recursive = T))
+real <- dirname(list.files(lfmm_out, "lfmm_results.pdf", full.names = F, recursive = T))
 length(real)
 
 n <- 1728
@@ -740,8 +728,8 @@ length(expect)
 expect[!expect %in% real]
 ```
 
-
 gather all the lfmm results for all the k-mer batches using the results directly
+
 ```{r}
 all_lfmm_dir <- "./gea/lfmm/all_bio"
 dir.create(all_lfmm_dir, showWarnings = T)
@@ -755,23 +743,39 @@ for (i in 1:19) {
 
 }
 
+## below: it works but very slow and memory consuming
+library(R.utils)
+
+cand_kmers <- rowSums(do.call(cbind, lapply(expect, function(i) {
+  cand_files <- list.files(file.path(lfmm_out, i), "candidates_.+.csv", full.names = T)
+  do.call(rbind, lapply(cand_files, function(f) {
+    varname <- gsub("(.+_|.csv)", "", basename(f))
+    df <- data.frame(countLines(f))
+    colnames(df) <- which(f %in% cand_files)
+    rownames(df) <- varname
+    return(df)
+    }))
+})))
 ```
 
-
 gather all the lfmm results for all the k-mer batches using the log files (faster i think)
+
 ```{r}
 log_K5 <- "./gea/lfmm/log_K5"
 log_files <- list.files(log_K5, pattern = ".log", full.names = T)
+length(log_files)
 cand_kmers <- rowSums(do.call(cbind, lapply(1:n, function(i) {
-  df <- fread(log_files[i], skip = 10, nrows = 19, sep = " ", 
+  cat(i, "\n")
+  df <- fread(log_files[i], skip = 10, nrows = 20, sep = " ", 
               select = c(7, 9), col.names = c("var", i),
               data.table = FALSE)
   df <- df %>% column_to_rownames("var")
+  if (rownames(df)[20] == "elevation") {cat(i, "\n")}
+  return(df)
   })
   ))
 cand_kmers <- format(as.data.frame(cand_kmers), big.mark = ",")
 ```
-
 
 ### RDA
 
@@ -803,11 +807,59 @@ length(cand2)
 signif_rda <- unique(names(c(cand1, cand2)))
 ```
 
--\> 132070 candidate k-mers
+-> 132070 candidate k-mers
 
 ```{r}
 length(signif_pca2[signif_pca2 %in% signif_rda])
 length(signif_rda[signif_rda %in% signif_pca2])
 ```
 
--\> only 40835 common k-mers
+-> only 40835 common k-mers
+
+## Climatic condition in Central Highlands VN
+
+- Following [this paper](https://doi.org/10.3389/fenvs.2022.820916): select a random point in each district, and get bioclim variables.
+    + How to get the coordinates? get the map of the Central Highlands (by raster package) then extract the mid point of each district  
+    -> there are 62 districts in the central highlands
+
+- Then, run PCA of bioclim variables (with and without elevation) to see how they are different from the condition in Africa.
+
+### Coordinates of all districts in the Central Highlands
+```{r}
+vn <- getData("GADM", country = "VN", level = 2)
+
+ch_provinces <- c("Lâm Đồng", "Đắk Lắk", "Đắk Nông", "Kon Tum", "Gia Lai")
+ch_map <- vn[vn$NAME_1 %in% ch_provinces, ]
+length(ch_map$NAME_2)
+
+chdist_coord <- do.call(rbind, lapply(ch_map$NAME_2, function(d) {
+  dist_map <- ch_map[ch_map$NAME_2 == d,]
+  coord <- data.frame(province = dist_map$NAME_1,
+                      district = dist_map$NAME_2,
+                      coordinates(dist_map)
+                      )
+  colnames(coord)[3:4] <- c("long", "lat")
+  return(coord)
+}))
+```
+
+
+### Bioclim variables of the districts
+
+```{r}
+chvar <- do.call(rbind, lapply(1:nrow(chdist_coord), function(i) {
+  clim <- getData(name = "worldclim", var = "bio", res = 0.5, lat = na.omit(chdist_coord$lat)[i], lon = na.omit(chdist_coord$long)[i])
+  elev <- getData(name = "SRTM", lat = na.omit(chdist_coord$lat)[i], lon = na.omit(chdist_coord$long)[i])
+  point <- SpatialPoints(data.frame(long = na.omit(chdist_coord$long)[i], lat = na.omit(chdist_coord$lat)[i]), proj4string = clim@crs)
+  clim_values <- extract(clim, point)
+  elev_value <- extract(elev, point)
+  colnames(clim_values) <- gsub("_.+", "", colnames(clim_values))
+  df <- data.frame(district = chdist_coord$district[i], 
+                   clim_values, 
+                   elevation = elev_value,
+                   Long = chdist_coord$long[i], Lat = chdist_coord$lat[i],
+                   group = "VN")
+  return(df)
+}))
+```
+
