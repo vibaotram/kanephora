@@ -19,6 +19,7 @@ library(car)
 library(GGally)
 library(viridis)
 library(vegan)
+library(ggfortify)
 ```
 
 ```{r, eval=FALSE}
@@ -42,6 +43,11 @@ setwd("/data/projects/rob/scripts/kmer")
 
 ## Test Kiss on the african set
 
+
+### On I-trop
+
+I had to run it on /scratch, and the results were automatically deleted after few weeks...
+
 ```{bash}
 sbatch /data/projects/rob/scripts/kiss_scripts/af_kiss_ci2.sh
 ```
@@ -49,6 +55,18 @@ sbatch /data/projects/rob/scripts/kiss_scripts/af_kiss_ci2.sh
 first I tried pcadapt with K=2\
 then I found from the scree plot that K = 7 should be a better value\
 because it is the largest value before plateau and it is congruent with the cross entropy evaluation by snmf
+
+
+### On IFB
+
+```{bash}
+# transfer fastq data 
+cd /shared/projects/most_kmer/
+mkdir -p kiss_af/fastq
+cd kiss_af
+rsync -vauP baotram@bioinfo-nas2.ird.fr:/data/projects/rob/data/raw_fastq_2019/* fastq/
+```
+
 
 ### choose a random k-mer set
 
@@ -442,11 +460,13 @@ clim[,c(1:20, ncol(clim))] %>%
   pivot_longer(cols = 1:20, names_to = "variable") %>% 
   mutate(variable = factor(variable, 
                            levels = str_sort(unique(variable), numeric = T))) %>% 
+  filter(snp_group != "hb") %>% 
+  rename(group = snp_group) %>% 
   ggplot() +
   facet_wrap(~ variable, ncol = 5, scale = "free") +
-  geom_density(aes(value, color = snp_group, fill = snp_group), alpha = 0.5) +
-  scale_color_manual(values = c("gray", turbo(5))) +
-  scale_fill_manual(values = c("gray", turbo(5))) +
+  geom_density(aes(value, color = group, fill = group), alpha = 0.5) +
+  scale_color_manual(values = turbo(5)) +
+  scale_fill_manual(values =  turbo(5)) +
   theme_minimal()
 ```
 
@@ -482,7 +502,7 @@ ggplot(data = africa) +
         legend.key.height = unit(15, "pt"))
 ```
 
-### genotype
+### toy genotype
 
 ```{r}
 submat1 <- submat
@@ -561,30 +581,31 @@ biplot(clim_pca)
 ```
 
 ```{r}
-clim_pca2 <- prcomp(clim[,1:20], scale = T)
+clim_pure <- clim[clim$snp_group != "hb",]
+clim_pca2 <- prcomp(clim_pure[,1:19], scale = T)
 summary(clim_pca2)
 screeplot(clim_pca2)
 library(ggfortify)
-clim$snp_group <- factor(clim$snp_group, levels = c("hb","ER", "OB", "C", "AG", "D"))
+clim_pure$snp_group <- factor(clim_pure$snp_group, levels = c("ER", "OB", "C", "AG", "D"))
 ## PC1 vs PC2
 autoplot(clim_pca2, x = 1, y = 2,
-         data = clim, colour = 'snp_group', size = 2,
+         data = clim_pure, colour = 'snp_group', size = 2,
          loadings = TRUE, loadings.colour = 'blue',
          loadings.label = TRUE, loadings.label.size = 6,
          loadings.label.colour = "black", frame = T) +
   theme_minimal() + 
-  scale_colour_manual(values = c("gray", turbo(5))) +
-  scale_fill_manual(values = c("gray", turbo(5))) 
+  scale_colour_manual(values = c(turbo(5))) +
+  scale_fill_manual(values = c(turbo(5))) 
 
 ## PC1 vs PC2
 autoplot(clim_pca2, x = 1, y = 3,
-         data = clim, colour = 'snp_group', size = 2,
+         data = clim_pure, colour = 'snp_group', size = 2,
          loadings = TRUE, loadings.colour = 'blue',
          loadings.label = TRUE, loadings.label.size = 6,
          loadings.label.colour = "black", frame = T) +
   theme_minimal() + 
-  scale_colour_manual(values = c("gray", turbo(5))) +
-  scale_fill_manual(values = c("gray", turbo(5))) 
+  scale_colour_manual(values = c(turbo(5))) +
+  scale_fill_manual(values = c(turbo(5))) 
   
 ```
 
@@ -763,7 +784,8 @@ gather all the lfmm results for all the k-mer batches using the log files (faste
 ```{r}
 log_K5 <- "./gea/lfmm/log_K5"
 log_files <- list.files(log_K5, pattern = ".log", full.names = T)
-length(log_files)
+n <- length(log_files)
+
 cand_kmers <- rowSums(do.call(cbind, lapply(1:n, function(i) {
   cat(i, "\n")
   df <- fread(log_files[i], skip = 10, nrows = 20, sep = " ", 
@@ -775,6 +797,51 @@ cand_kmers <- rowSums(do.call(cbind, lapply(1:n, function(i) {
   })
   ))
 cand_kmers <- format(as.data.frame(cand_kmers), big.mark = ",")
+```
+
+the histograms and qq-plots are not good (stares, uniform distribution)
+
+### lfmm of putative adaptive kmers
+
+so, we try to run lfmm only for the putative adaptive kmers to see if we have better p-values distribution  
+for each batch, run pcadapt to select adaptive kmers, then run lfmm for only these adaptive ones.
+
+
+```{r}
+lfmm_out <- "./gea/lfmm/out_K5_outlier/"
+real <- dirname(list.files(lfmm_out, "lfmm_results.pdf", full.names = F, recursive = T))
+length(real)
+
+n <- 1728
+expect <- sapply(1:n, function(r) {
+  if (r %% 100 == 0) {
+    b <- r/100 - 1
+    s <- 100
+  } else {
+    b <- r %/% 100
+    s <- r %% 100
+  }
+  return(paste(b, s, sep = "_"))
+})
+length(expect)
+
+# files that haven't finished
+expect[!expect %in% real]
+```
+
+```{r}
+library(R.utils)
+
+cand_kmers <- rowSums(do.call(cbind, lapply(expect, function(i) {
+  cand_files <- list.files(file.path(lfmm_out, i), "candidates_.+.csv", full.names = T)
+  do.call(rbind, lapply(cand_files, function(f) {
+    varname <- gsub("(.+_|.csv)", "", basename(f))
+    df <- data.frame(countLines(f))
+    colnames(df) <- which(f %in% cand_files)
+    rownames(df) <- varname
+    return(df)
+    }))
+})))
 ```
 
 ### RDA
@@ -861,5 +928,94 @@ chvar <- do.call(rbind, lapply(1:nrow(chdist_coord), function(i) {
                    group = "VN")
   return(df)
 }))
+chvar <- chvar %>% 
+  column_to_rownames("district")
 ```
 
+
+```{r}
+all_clim <- getData(name = "worldclim", var = "bio", res = 2.5)
+
+vn_clim <- raster::mask(all_clim, ch_map)
+plot(vn_clim[[1:19]], ylim = c(11, 16), xlim = c(105, 110), axes = F, 
+     col = viridis::cividis(100), add = T)
+```
+
+
+### Distribution of clim variables in Africa + VN
+
+```{r}
+clim_all <- rbind(chvar,
+      clim %>% rename(group = snp_group))
+
+clim_groups <- clim_all %>% 
+  filter(group != "hb")
+
+clim_groups$group <- factor(clim_groups$group, levels = c("ER", "OB", "C", "AG", "D", "VN"))
+
+clim_groups %>% 
+  filter(group != "hb") %>%  
+  pivot_longer(cols = 1:20, names_to = "variable") %>% 
+  mutate(variable = factor(variable, 
+                           levels = str_sort(unique(variable), numeric = T))) %>% 
+  ggplot() +
+  facet_wrap(~ variable, ncol = 5, scale = "free") +
+  geom_density(aes(value, color = group, fill = group), alpha = 0.5) +
+  scale_color_manual(values = c(turbo(5), "black")) +
+  scale_fill_manual(values = c(turbo(5), "black")) +
+  theme_minimal()
+```
+
+### PCA of clim variables in Africa+VN
+```{r}
+climall_pca <- prcomp(clim_groups[,1:20], scale = T)
+summary(climall_pca)
+screeplot(climall_pca)
+
+## PC1 vs PC2
+autoplot(climall_pca, x = 1, y = 2,
+         data = clim_groups, colour = 'group', size = 2,
+         loadings = TRUE, loadings.colour = 'blue',
+         loadings.label = TRUE, loadings.label.size = 6,
+         loadings.label.colour = "black", frame = T) +
+  theme_minimal() + 
+  scale_colour_manual(values = c(turbo(5), "black")) +
+  scale_fill_manual(values = c(turbo(5), "black")) 
+
+## PC1 vs PC3
+autoplot(climall_pca, x = 1, y = 3,
+         data = clim_groups, colour = 'group', size = 2,
+         loadings = TRUE, loadings.colour = 'blue',
+         loadings.label = TRUE, loadings.label.size = 6,
+         loadings.label.colour = "black", frame = T) +
+  theme_minimal() + 
+  scale_colour_manual(values = c(turbo(5), "black")) +
+  scale_fill_manual(values = c(turbo(5), "black")) 
+```
+
+
+```{r}
+climall_pca <- prcomp(clim_groups[,1:19], scale = T)
+summary(climall_pca)
+screeplot(climall_pca)
+
+## PC1 vs PC2
+autoplot(climall_pca, x = 1, y = 2,
+         data = clim_groups, colour = 'group', size = 2,
+         loadings = TRUE, loadings.colour = 'blue',
+         loadings.label = TRUE, loadings.label.size = 6,
+         loadings.label.colour = "black", frame = T) +
+  theme_minimal() + 
+  scale_colour_manual(values = c(turbo(5), "black")) +
+  scale_fill_manual(values = c(turbo(5), "black")) 
+
+## PC1 vs PC2
+autoplot(climall_pca, x = 1, y = 3,
+         data = clim_groups, colour = 'group', size = 2,
+         loadings = TRUE, loadings.colour = 'blue',
+         loadings.label = TRUE, loadings.label.size = 6,
+         loadings.label.colour = "black", frame = T) +
+  theme_minimal() + 
+  scale_colour_manual(values = c(turbo(5), "black")) +
+  scale_fill_manual(values = c(turbo(5), "black")) 
+```

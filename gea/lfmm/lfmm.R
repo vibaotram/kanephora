@@ -16,6 +16,7 @@ suppressPackageStartupMessages(library(vegan))
 suppressPackageStartupMessages(library(BEDMatrix))
 suppressPackageStartupMessages(library(tidyverse))
 suppressPackageStartupMessages(library(data.table))
+suppressPackageStartupMessages(library(pcadapt))
 
 option_list <- list(
   make_option(c("-b", "--bedFile"),
@@ -66,11 +67,25 @@ pc <- myArgs$pca
 vi <- myArgs$variable
 K <- myArgs$numgroup
 
-## remove individuals missing in the climfile
-## keep kmers in the kmerlist
-submat <- bed[which(rownames(bed) %in% rownames(clim)), sort(kmer)]
 
 #######   #######   #######
+
+# detect outlier k-mers
+kmermat <- bed[, sort(kmer)]
+kmerpca <- read.pcadapt(t(kmermat), type = "pcadapt")
+pcadapt <- pcadapt(input = kmerpca, K = 2)
+
+padj <- p.adjust(pcadapt$pvalues,method="BH")
+alpha <- 0.05
+outliersBH0.05 <- which(padj < alpha)
+# snp_pc <- get.pc(pcadapt, outliersBH0.05)
+
+
+## remove individuals missing in the climfile
+## keep kmers in the kmerlist
+## 18.10.2022 - keep outlier kmers
+submat <- bed[which(rownames(bed) %in% rownames(clim)), outliersBH0.05]
+
 
 # explanatory variables: pca of climatic variables if pc is set numeric, else selected variables, else all the variables
 
@@ -145,3 +160,8 @@ cat("Number of total candidate k-mers:", nrow(tot_cands), "\n")
 
 # bedfile <- "./gea/tmp/3.TABLE2BED/output_file.0.bed"
 # kmerfile <- "./gea/tmp/5.RANGES/output_file.0/1.txt"
+
+# bedfile <- "/shared/projects/most_kmer/kiss_out/3.TABLE2BED/output_file.0.bed"
+# kmerfile <- "/shared/projects/most_kmer/kiss_out/5.RANGES/output_file.0/1.txt"
+# climFile <- "/shared/projects/most_kmer/kiss_af/samples/climatic_variables.csv"
+# clim <- fread(climFile)

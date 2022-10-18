@@ -4,14 +4,15 @@
 #SBATCH --mem=20G
 #SBATCH --partition=fast,long
 #SBATCH -A elai_most
-#SBATCH --error /shared/projects/most_kmer/afterkiss/gea/lfmm/log_K5/slurm-%x_%a.log
-#SBATCH --output /shared/projects/most_kmer/afterkiss/gea/lfmm/log_K5/slurm-%x_%a.log
+#SBATCH --error /shared/projects/most_kmer/afterkiss/gea/lfmm/log_K5_outlier/slurm-%x_%a.log
+#SBATCH --output /shared/projects/most_kmer/afterkiss/gea/lfmm/log_K5_outlier/slurm-%x_%a.log
 #SBATCH --array=[1-1728]
 
 module load singularity
 
 # dist_dir=/shared/projects/most_kmer/afterkiss/gea/lfmm/out_P2
-dist_dir=/shared/projects/most_kmer/afterkiss/gea/lfmm/out_K5
+# dist_dir=/shared/projects/most_kmer/afterkiss/gea/lfmm/out_K5
+dist_dir=/shared/projects/most_kmer/afterkiss/gea/lfmm/out_K5_outlier
 kiss_dir=/shared/projects/most_kmer/kiss_out
 
 range=$SLURM_ARRAY_TASK_ID
