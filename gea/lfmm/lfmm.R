@@ -46,7 +46,11 @@ option_list <- list(
   make_option(c("-K", "--numgroup"),
               type = "numeric",
               default = NULL,
-              help = "number of ancestral groups used as latent factor in lfmm")
+              help = "number of ancestral groups used as latent factor in lfmm"),
+  make_option(c("-s", "--selectiveKmers"),
+              type = "character",
+              default = NULL,
+              help = "file containing selective/outlier kmers")
 )
 
 
@@ -60,7 +64,18 @@ bed <- BEDMatrix(bedfile, simple_names = T)
 outdir <- myArgs$outdir
 dir.create(outdir, showWarnings = F, recursive = T)
 kmerfile <- myArgs$kmerList
-kmer <- scan(kmerfile)
+selectivefile <- myArgs$selectiveKmers
+outliers <- read.table(kmerfile, sep = "\t")
+selective_kmers <- outliers[,1]
+
+if (kmerfile != selectivefile) {
+  kmer <- scan(kmerfile)
+} else {
+  kmer <- outliers[,4]
+}
+
+
+
 clim <- fread(myArgs$climFile)
 clim <- clim %>% column_to_rownames(colnames(clim)[1])
 pc <- myArgs$pca
@@ -70,21 +85,23 @@ K <- myArgs$numgroup
 
 #######   #######   #######
 
-# detect outlier k-mers
-kmermat <- bed[, sort(kmer)]
-kmerpca <- read.pcadapt(t(kmermat), type = "pcadapt")
-pcadapt <- pcadapt(input = kmerpca, K = 2)
-
-padj <- p.adjust(pcadapt$pvalues,method="BH")
-alpha <- 0.05
-outliersBH0.05 <- which(padj < alpha)
+# # detect outlier k-mers
+# kmermat <- bed[, sort(kmer)]
+# kmerpca <- read.pcadapt(t(kmermat), type = "pcadapt")
+# pcadapt <- pcadapt(input = kmerpca, K = 2)
+# 
+# padj <- p.adjust(pcadapt$pvalues,method="BH")
+# alpha <- 0.05
+# outliersBH0.05 <- which(padj < alpha)
 # snp_pc <- get.pc(pcadapt, outliersBH0.05)
 
 
 ## remove individuals missing in the climfile
 ## keep kmers in the kmerlist
 ## 18.10.2022 - keep outlier kmers
-submat <- bed[which(rownames(bed) %in% rownames(clim)), outliersBH0.05]
+# submat <- bed[which(rownames(bed) %in% rownames(clim)), outliersBH0.05]
+
+submat <- bed[which(rownames(bed) %in% rownames(clim)), sort(kmer)]
 
 
 # explanatory variables: pca of climatic variables if pc is set numeric, else selected variables, else all the variables
@@ -109,22 +126,29 @@ pv <- lfmm_test(Y = submat, X = expl,
                      lfmm = sub_lfmm, 
                      calibrate = "gif")
 
-lfmmplot <- file.path(outdir, "lfmm_results.pdf")
-pdf(file = lfmmplot)
+hist_plot <- file.path(outdir, "pvalues_histogram.pdf")
+pdf(file = hist_plot)
 for (i in 1:ncol(expl)) {
   pvalues <- pv$calibrated.pvalue[,i]
-  hist(pvalues, 
-       main = paste0("Calibrated p-values for ", colnames(expl)[i], 
+  hist(pvalues,
+       main = paste0("Calibrated p-values for ", colnames(expl)[i],
                      " (GIF = ", sprintf("%.2f", pv$gif[i]), ")"),
        xlab = "p-values")
 }
+dev.off()
 
-# for (i in 1:ncol(expl)) {
-#   pvalues <- pv$calibrated.pvalue[,i]
-#   qqplot(rexp(length(pvalues), rate = log(10)),
-#          -log10(pvalues), xlab = "Expected quantile",
-#          pch = 19, cex = .4)
-# }
+
+qq_plot <- file.path(outdir, "pvalues_qqplot.pdf")
+pdf(file = qq_plot)
+for (i in 1:ncol(expl)) {
+  pvalues <- pv$calibrated.pvalue[,i]
+  qqplot(rexp(length(pvalues), rate = log(10)),
+         -log10(pvalues), xlab = "Expected quantile",
+         main = paste0("Calibrated p-values for ", colnames(expl)[i],
+                       " (GIF = ", sprintf("%.2f", pv$gif[i]), ")"),
+         pch = 19, cex = .4)
+  abline(0,1)
+}
 
 dev.off()
 
@@ -143,6 +167,8 @@ dev.off()
 # write.table(cands, candfile, quote = FALSE, sep="\t", row.names = F, col.names = F)
 
 ## output candidates separately for each explanatory variable (under construction)
+
+
 for (c in 1:ncol(pv$calibrated.pvalue)) {
   cands <- rownames(pv$calibrated.pvalue)[pv$calibrated.pvalue[,c] < 0.05]
   cands_df <- data.frame(bedname = gsub(".bed", "", basename(bedfile)),
@@ -150,6 +176,7 @@ for (c in 1:ncol(pv$calibrated.pvalue)) {
                          sequence = cands)
   
   cat("Number of candidate k-mers associated with", colnames(pv$calibrated.pvalue)[c], "is", length(cands), "\n")
+  cat("Number of outlier k-mers associated with", colnames(pv$calibrated.pvalue)[c], "is", length(cands[cands %in% selective_kmers]))
   
   candfile <-  file.path(outdir, paste0("candidates_", colnames(pv$calibrated.pvalue)[c],".csv"))
   write.table(cands_df, candfile, quote = FALSE, sep = "\t", row.names = F, col.names = F)
@@ -157,6 +184,7 @@ for (c in 1:ncol(pv$calibrated.pvalue)) {
 
 tot_cands <- pv$calibrated.pvalue[sapply(1:nrow(pv$calibrated.pvalue), function(i) any(pv$calibrated.pvalue[i,] < 0.05)),]
 cat("Number of total candidate k-mers:", nrow(tot_cands), "\n")
+
 
 # bedfile <- "./gea/tmp/3.TABLE2BED/output_file.0.bed"
 # kmerfile <- "./gea/tmp/5.RANGES/output_file.0/1.txt"
