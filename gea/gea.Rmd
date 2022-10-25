@@ -22,26 +22,45 @@ samples <- samples %>% filter(!is.na(Lat))
 ```
 
 ```{r}
-library(ggmap)
-sbbox <- make_bbox(lon = samples$Long, lat = samples$Lat, f = .1)
-sq_map <- get_map(location = sbbox, maptype = "satellite", source = "google")
-ggmap(sq_map) + 
-  geom_point(data = samples, mapping = aes(x = Long, y = Lat), color = "red3") +
-  geom_density(data = samples, mapping = aes(x = Long, y = Lat))
+# library(ggmap)
+# sbbox <- make_bbox(lon = samples$Long, lat = samples$Lat, f = .1)
+# sq_map <- get_map(location = sbbox, maptype = "satellite", source = "google")
+# ggmap(sq_map) + 
+#   geom_point(data = samples, mapping = aes(x = Long, y = Lat), color = "red3") +
+#   geom_density(data = samples, mapping = aes(x = Long, y = Lat))
 ```
 
 ## Climatic data
 
-worldclim data from 1960 to 1990 averages
+worldclim data from 1970 to 2000 averages
 
 ```{r}
 # clim <- getData(name = "worldclim", var = "bio", res = 0.5, lat = na.omit(samples$Lat)[1:2], lon = na.omit(samples$Long)[1:2])
 # point <- SpatialPoints(data.frame(long = na.omit(samples$Long)[1:2], lat = na.omit(samples$Lat)[1:2]), proj4string = clim@crs)
 # extract(clim, point)
 
+## bioclim data
+climfile <- "./wc2.1_30s_bio.zip" # destination path to download the elevation data,  change if needed
+download.file("https://geodata.ucdavis.edu/climate/worldclim/2_1/base/wc2.1_30s_bio.zip", 
+              destfile = climfile,
+              method = "curl")
+climdata_dir <- "./" # path to the worldclim dataset folder
+climdata <- list.files(climdata_dir, pattern = "wc2.1_30s_bio_\\d+.tif", full.names = T)
+clim <- raster::stack(climdata)
+
+## download elevation data
+elevfile <- "./wc2.1_30s_elev.zip" # destination path to download the elevation data,  change if needed
+download.file("https://geodata.ucdavis.edu/climate/worldclim/2_1/base/wc2.1_30s_elev.zip", 
+              destfile = elevfile,
+              method = "curl")
+unzip(elevfile)
+elev <- raster(gsub(".zip", ".tif", elevfile)) 
+
+## extract values for points
 envirvar <- do.call(rbind, lapply(1:nrow(samples), function(i) {
-  clim <- getData(name = "worldclim", var = "bio", res = 0.5, lat = na.omit(samples$Lat)[i], lon = na.omit(samples$Long)[i])
-  elev <- getData(name = "SRTM", lat = na.omit(samples$Lat)[i], lon = na.omit(samples$Long)[i])
+  # clim <- getData(name = "worldclim", var = "bio", res = 0.5, lat = na.omit(samples$Lat)[i], lon = na.omit(samples$Long)[i])
+  # elev <- getData(name = "SRTM", lat = na.omit(samples$Lat)[i], lon = na.omit(samples$Long)[i])
+  
   point <- SpatialPoints(data.frame(long = na.omit(samples$Long)[i], lat = na.omit(samples$Lat)[i]), proj4string = clim@crs)
   clim_values <- extract(clim, point)
   elev_value <- extract(elev, point)
@@ -62,6 +81,8 @@ library(viridisLite)
 heatmap.2(clim_cor, dendrogram = "row",
           trace = "none", density.info = "none", col = rocket(200))
 ```
+
+
 
 ## raster
 
