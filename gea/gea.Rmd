@@ -10,6 +10,8 @@ knitr::opts_chunk$set(echo = TRUE)
 library(raster)
 library(data.table)
 library(dplyr)
+library(stringr)
+setwd("/shared/projects/most_kmer/afterkiss/gea")
 ```
 
 ## Genotype samples
@@ -17,7 +19,7 @@ library(dplyr)
 55 African individuals
 
 ```{r}
-samples <- fread("/home/baotram/phd/robusta/test_10_clones/sequence_info_final.tsv")
+samples <- fread("./climatic_variables_1.4.csv")
 samples <- samples %>% filter(!is.na(Lat))
 ```
 
@@ -44,7 +46,8 @@ climfile <- "./wc2.1_30s_bio.zip" # destination path to download the elevation d
 download.file("https://geodata.ucdavis.edu/climate/worldclim/2_1/base/wc2.1_30s_bio.zip", 
               destfile = climfile,
               method = "curl")
-climdata_dir <- "./" # path to the worldclim dataset folder
+unzip(climfile)
+climdata_dir <- "." # path to the worldclim dataset folder
 climdata <- list.files(climdata_dir, pattern = "wc2.1_30s_bio_\\d+.tif", full.names = T)
 clim <- raster::stack(climdata)
 
@@ -62,17 +65,22 @@ envirvar <- do.call(rbind, lapply(1:nrow(samples), function(i) {
   # elev <- getData(name = "SRTM", lat = na.omit(samples$Lat)[i], lon = na.omit(samples$Long)[i])
   
   point <- SpatialPoints(data.frame(long = na.omit(samples$Long)[i], lat = na.omit(samples$Lat)[i]), proj4string = clim@crs)
-  clim_values <- extract(clim, point)
-  elev_value <- extract(elev, point)
-  colnames(clim_values) <- gsub("_.+", "", colnames(clim_values))
-  df <- data.frame(Label = gsub("_.+", "", samples$Label[i]), 
+  clim_values <- raster::extract(clim, point)
+  elev_value <- raster::extract(elev, point)
+  colnames(clim_values) <- gsub("wc2.1_30s_", "", colnames(clim_values))
+  df <- data.frame(Label = samples$Label[i], 
                    clim_values, 
                    elevation = elev_value,
                    Long = samples$Long[i], Lat = samples$Lat[i],
-                   snp_group = samples$kasp_group[i])
+                   snp_group = samples$snp_group[i])
   return(df)
 }))
-write.csv(envirvar, "./gea/climatic_variables.csv", row.names = F)
+
+write.csv(envirvar[,c(colnames(envirvar)[1], str_sort(colnames(envirvar)[2:20], numeric = T), colnames(envirvar)[21:24])], 
+          "./climatic_variables_2.1.csv", row.names = F)
+write.csv(envirvar[,c(colnames(envirvar)[1], str_sort(colnames(envirvar)[2:20], numeric = T), colnames(envirvar)[21])], 
+          "lfmm/lfmm_explanatory_2.1.csv",
+          row.names = F)
 ```
 
 ```{r}

@@ -380,7 +380,7 @@ Below is a trial on a random k-mer set (batch 415) of the african data
 ### environment variables
 
 ```{r}
-clim_file <- "./gea/climatic_variables.csv"
+clim_file <- "./gea/climatic_variables_2.1.csv"
 clim <- fread(clim_file, data.table = T)
 # write.csv(clim[,1:21], "./gea/lfmm/lfmm_explanatory.csv", 
 #           row.names = F, quote = F)
@@ -800,6 +800,9 @@ cand_kmers <- format(as.data.frame(cand_kmers), big.mark = ",")
 ```
 
 the histograms and qq-plots are not good (stares, uniform distribution)
+
+
+
 
 ### lfmm of putative adaptive kmers
 

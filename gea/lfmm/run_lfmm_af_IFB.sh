@@ -1,12 +1,12 @@
 #!/bin/bash
-#SBATCH --job-name gea_af
+#SBATCH --job-name gea_af_all
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=20G
+#SBATCH --mem=30G
 #SBATCH --partition=fast,long
 #SBATCH -A elai_most
 #SBATCH --error /shared/projects/most_kmer/afterkiss/gea/lfmm/log_K5/slurm-%x_%a.log
 #SBATCH --output /shared/projects/most_kmer/afterkiss/gea/lfmm/log_K5/slurm-%x_%a.log
-#SBATCH --array=[1-1728]
+#SBATCH --array=[1-1806]
 
 module load singularity
 
@@ -43,7 +43,7 @@ echo "working dir: $dir"
 
 
 bed="$kiss_dir/3.TABLE2BED/output_file.$r1.bed"
-clim=$(dirname $dist_dir)/lfmm_explanatory.csv
+clim=$(dirname $dist_dir)/lfmm_explanatory_2.1.csv
 out=$dist_dir/$n
 
 ## run script

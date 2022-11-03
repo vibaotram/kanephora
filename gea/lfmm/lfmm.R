@@ -1,4 +1,5 @@
-
+#!/usr/bin/env Rscript --vanilla
+#
 #########
 ######### input (from kiss): bed/bim files (in 3.TABLE2BED), a list of tested kmers (in 5.RANGES), a climatic data file (id in first column), K (number of groups), an output dir
 ######### output: a list of candidate kmers, a histogram of calibrated p-values, GIF, saved them to the outdir
@@ -17,6 +18,7 @@ suppressPackageStartupMessages(library(BEDMatrix))
 suppressPackageStartupMessages(library(tidyverse))
 suppressPackageStartupMessages(library(data.table))
 suppressPackageStartupMessages(library(pcadapt))
+suppressPackageStartupMessages(library(qvalue))
 
 option_list <- list(
   make_option(c("-b", "--bedFile"),
@@ -50,7 +52,11 @@ option_list <- list(
   make_option(c("-s", "--selectiveKmers"),
               type = "character",
               default = NULL,
-              help = "file containing selective/outlier kmers")
+              help = "file containing selective/outlier kmers"),
+  make_option(c("-g", "--backgroundKmers"),
+              type = "character",
+              action = NULL,
+              help = "file containing background kmers in lfmm")
 )
 
 
@@ -65,15 +71,29 @@ outdir <- myArgs$outdir
 dir.create(outdir, showWarnings = F, recursive = T)
 kmerfile <- myArgs$kmerList
 selectivefile <- myArgs$selectiveKmers
-outliers <- read.table(kmerfile, sep = "\t")
+outliers <- read.table(selectivefile, sep = "\t")
 selective_kmers <- outliers[,1]
+selective_kmers <- gsub("_0", "", selective_kmers)
+
+bg_kmer_file <- myArgs$backgroundKmers
 
 if (kmerfile != selectivefile) {
-  kmer <- scan(kmerfile)
+  cat("run lfmm on all k-mers\n")
+  kmer <- scan(kmerfile) ### NOTE: the object `kmer` here contains the index of the kmers out of the bed file
 } else {
-  kmer <- outliers[,4]
+  cat("run lfmm on outlier k-mers\n")
+  outkmer <- outliers[,4] ### NOTE: the object `outkmer` here contains the kmer indexes out of the bed file
+  
+  if (!is.null(bg_kmer_file)) {
+    cat("add", length(outkmer), "random background k-mers to lfmm analysis\n")
+    allkmer <- scan(bg_kmer_file) ### NOTE: the object `allkmer` here contains the kmer indexes out of the bed file
+    bgkmer <- sample(allkmer[!allkmer %in% outkmer], length(outkmer), replace = F)
+    kmer <- c(outkmer, bgkmer)
+  } else {
+    kmer <- outkmer
+  }
+  
 }
-
 
 
 clim <- fread(myArgs$climFile)
@@ -115,7 +135,7 @@ if (is.numeric(pc)) {
   print(colnames(clim)[vi])
   expl <- clim[,vi]
 } else {
-  print("run lfmm with all the provided climatic data")
+  print("run lfmm with all the provided climatic data\n")
   expl <- clim
 }
 
@@ -125,6 +145,8 @@ sub_lfmm <- lfmm_ridge(Y = submat, X = expl, K = K)
 pv <- lfmm_test(Y = submat, X = expl, 
                      lfmm = sub_lfmm, 
                      calibrate = "gif")
+
+
 
 hist_plot <- file.path(outdir, "pvalues_histogram.pdf")
 pdf(file = hist_plot)
@@ -168,28 +190,52 @@ dev.off()
 
 ## output candidates separately for each explanatory variable (under construction)
 
-
+cat("variable\tgif_calibration_kmers\tgif_calibration_outliers\tfdr_control_kmer\tfdr_control_outliers\n")
 for (c in 1:ncol(pv$calibrated.pvalue)) {
-  cands <- rownames(pv$calibrated.pvalue)[pv$calibrated.pvalue[,c] < 0.05]
-  cands_df <- data.frame(bedname = gsub(".bed", "", basename(bedfile)),
-                         segment_nb = gsub(".txt", "", basename(kmerfile)),
-                         sequence = cands)
+  # select kmers with pvalue < 0.05
+  pv_cands <- rownames(pv$calibrated.pvalue)[pv$calibrated.pvalue[,c] < 0.05]
+  pv_cands_df <- data.frame(bedname = gsub(".bed", "", basename(bedfile)),
+                         segment_nb = gsub(".csv", "", basename(kmerfile)),
+                         sequence = ifelse(length(pv_cands) == 0, NA, pv_cands),
+                         outlier = ifelse(length(pv_cands) == 0, NA, pv_cands %in% selective_kmers))
   
-  cat("Number of candidate k-mers associated with", colnames(pv$calibrated.pvalue)[c], "is", length(cands), "\n")
-  cat("Number of outlier k-mers associated with", colnames(pv$calibrated.pvalue)[c], "is", length(cands[cands %in% selective_kmers]))
+  # try with FDR control of 0.05
+  qv <- qvalue(pv$calibrated.pvalue[,c], fdr.level = 0.01, pfdr = T)
+  fdr_cands <- rownames(pv$calibrated.pvalue)[qv$significant]
+  fdr_cands_df <- data.frame(bedname = gsub(".bed", "", basename(bedfile)),
+                             segment_nb = gsub("(.txt|.csv)", "", basename(kmerfile)),
+                             sequence = ifelse(length(fdr_cands) == 0, NA, fdr_cands),
+                             outlier = ifelse(length(fdr_cands) == 0, NA, fdr_cands %in% selective_kmers))
   
-  candfile <-  file.path(outdir, paste0("candidates_", colnames(pv$calibrated.pvalue)[c],".csv"))
-  write.table(cands_df, candfile, quote = FALSE, sep = "\t", row.names = F, col.names = F)
+  
+  # cat("Number of candidate k-mers associated with", colnames(pv$calibrated.pvalue)[c], "is", length(cands), "\n")
+  # cat("Number of outlier k-mers associated with", colnames(pv$calibrated.pvalue)[c], "is", length(cands[cands %in% selective_kmers]), "\n")
+  cat(colnames(pv$calibrated.pvalue)[c], 
+      length(pv_cands), 
+      length(pv_cands[pv_cands %in% selective_kmers]),
+      length(fdr_cands), 
+      length(fdr_cands[fdr_cands %in% selective_kmers]),
+      # kmerfile,
+      sep = "\t"
+      )
+  cat("\n")
+  
+  pvcandfile <-  file.path(outdir, paste0("candidates_gif_", colnames(pv$calibrated.pvalue)[c],".csv"))
+  write.table(pv_cands_df, pvcandfile, quote = FALSE, sep = "\t", row.names = F, col.names = F)
+
+  fdrcandfile <- file.path(outdir, paste0("candidates_fdr_", colnames(pv$calibrated.pvalue)[c],".csv"))
+  write.table(fdr_cands_df, fdrcandfile, quote = FALSE, sep = "\t", row.names = F, col.names = F)
 }
 
-tot_cands <- pv$calibrated.pvalue[sapply(1:nrow(pv$calibrated.pvalue), function(i) any(pv$calibrated.pvalue[i,] < 0.05)),]
-cat("Number of total candidate k-mers:", nrow(tot_cands), "\n")
+# tot_cands <- pv$calibrated.pvalue[sapply(1:nrow(pv$calibrated.pvalue), function(i) any(pv$calibrated.pvalue[i,] < 0.05)),]
+# cat("Number of total candidate k-mers:", nrow(tot_cands), "\n")
 
 
 # bedfile <- "./gea/tmp/3.TABLE2BED/output_file.0.bed"
 # kmerfile <- "./gea/tmp/5.RANGES/output_file.0/1.txt"
 
-# bedfile <- "/shared/projects/most_kmer/kiss_out/3.TABLE2BED/output_file.0.bed"
-# kmerfile <- "/shared/projects/most_kmer/kiss_out/5.RANGES/output_file.0/1.txt"
+# bedfile <- "/shared/projects/most_kmer/kiss_af/output/3.TABLE2BED/output_file.0.bed"
+# kmerfile <- "/shared/projects/most_kmer/kiss_af/output/5.RANGES/output_file.0/1.txt"
 # climFile <- "/shared/projects/most_kmer/kiss_af/samples/climatic_variables.csv"
 # clim <- fread(climFile)
+# selectivefile <- "/shared/projects/most_kmer/kiss_af/output/6.PCADAPT/output_file.0_1_BH0.05.pcadapt_outliers.csv"
