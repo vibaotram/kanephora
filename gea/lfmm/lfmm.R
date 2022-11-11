@@ -194,14 +194,16 @@ cat("variable\tgif_calibration_kmers\tgif_calibration_outliers\tfdr_control_kmer
 for (c in 1:ncol(pv$calibrated.pvalue)) {
   # select kmers with pvalue < 0.05
   pv_cands <- rownames(pv$calibrated.pvalue)[pv$calibrated.pvalue[,c] < 0.05]
+  if (length(pv_cands) == 0) pv_cands <- NA
   pv_cands_df <- data.frame(bedname = gsub(".bed", "", basename(bedfile)),
-                         segment_nb = gsub(".csv", "", basename(kmerfile)),
-                         sequence = ifelse(length(pv_cands) == 0, NA, pv_cands),
-                         outlier = ifelse(length(pv_cands) == 0, NA, pv_cands %in% selective_kmers))
+                            segment_nb = gsub(".csv", "", basename(kmerfile)),
+                            sequence = pv_cands,
+                            outlier = pv_cands %in% selective_kmers)
   
   # try with FDR control of 0.05
   qv <- qvalue(pv$calibrated.pvalue[,c], fdr.level = 0.01, pfdr = T)
   fdr_cands <- rownames(pv$calibrated.pvalue)[qv$significant]
+  if (length(fdr_cands) == 0) fdr_cands <- NA
   fdr_cands_df <- data.frame(bedname = gsub(".bed", "", basename(bedfile)),
                              segment_nb = gsub("(.txt|.csv)", "", basename(kmerfile)),
                              sequence = ifelse(length(fdr_cands) == 0, NA, fdr_cands),
