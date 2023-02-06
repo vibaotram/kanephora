@@ -11,7 +11,7 @@ library(raster)
 library(data.table)
 library(dplyr)
 library(stringr)
-setwd("/shared/projects/most_kmer/afterkiss/gea")
+setwd("/shared/projects/most_kmer/afterkiss/bioclim")
 ```
 
 ## Genotype samples
@@ -21,6 +21,14 @@ setwd("/shared/projects/most_kmer/afterkiss/gea")
 ```{r}
 samples <- fread("./climatic_variables_1.4.csv")
 samples <- samples %>% filter(!is.na(Lat))
+samples <- samples %>% select(-c(2:21))
+samples <- rbind(samples,
+                 data.frame(Label = c("C-127", "C-133", "D-7", "D-8"),
+                            Long = c(14.53, 14.11, 15.510499, -12.31),
+                            Lat = c(1.37, 1.56, 5.485614, 10.35),
+                            snp_group = c("C", "A", "C", "D"))
+)
+write.csv(samples, "./lfmm_samples.csv", quote = F, row.names = F)
 ```
 
 ```{r}
@@ -32,9 +40,9 @@ samples <- samples %>% filter(!is.na(Lat))
 #   geom_density(data = samples, mapping = aes(x = Long, y = Lat))
 ```
 
-## Climatic data
+## Climatic data of the African samples
 
-worldclim data from 1970 to 2000 averages
+bioclim data from 1970 to 2000 averages (worldclim 2.1)
 
 ```{r}
 # clim <- getData(name = "worldclim", var = "bio", res = 0.5, lat = na.omit(samples$Lat)[1:2], lon = na.omit(samples$Long)[1:2])
@@ -49,7 +57,7 @@ download.file("https://geodata.ucdavis.edu/climate/worldclim/2_1/base/wc2.1_30s_
 unzip(climfile)
 climdata_dir <- "." # path to the worldclim dataset folder
 climdata <- list.files(climdata_dir, pattern = "wc2.1_30s_bio_\\d+.tif", full.names = T)
-clim <- raster::stack(climdata)
+bioclim <- raster::stack(climdata)
 
 ## download elevation data
 elevfile <- "./wc2.1_30s_elev.zip" # destination path to download the elevation data,  change if needed
@@ -64,8 +72,8 @@ envirvar <- do.call(rbind, lapply(1:nrow(samples), function(i) {
   # clim <- getData(name = "worldclim", var = "bio", res = 0.5, lat = na.omit(samples$Lat)[i], lon = na.omit(samples$Long)[i])
   # elev <- getData(name = "SRTM", lat = na.omit(samples$Lat)[i], lon = na.omit(samples$Long)[i])
   
-  point <- SpatialPoints(data.frame(long = na.omit(samples$Long)[i], lat = na.omit(samples$Lat)[i]), proj4string = clim@crs)
-  clim_values <- raster::extract(clim, point)
+  point <- SpatialPoints(data.frame(long = na.omit(samples$Long)[i], lat = na.omit(samples$Lat)[i]), proj4string = bioclim@crs)
+  clim_values <- raster::extract(bioclim, point)
   elev_value <- raster::extract(elev, point)
   colnames(clim_values) <- gsub("wc2.1_30s_", "", colnames(clim_values))
   df <- data.frame(Label = samples$Label[i], 
@@ -77,10 +85,10 @@ envirvar <- do.call(rbind, lapply(1:nrow(samples), function(i) {
 }))
 
 write.csv(envirvar[,c(colnames(envirvar)[1], str_sort(colnames(envirvar)[2:20], numeric = T), colnames(envirvar)[21:24])], 
-          "./climatic_variables_2.1.csv", row.names = F)
+          "./climatic_variables_2.1.csv", row.names = F, append = T)
 write.csv(envirvar[,c(colnames(envirvar)[1], str_sort(colnames(envirvar)[2:20], numeric = T), colnames(envirvar)[21])], 
           "lfmm/lfmm_explanatory_2.1.csv",
-          row.names = F)
+          row.names = F, append = TRUE)
 ```
 
 ```{r}
@@ -114,3 +122,59 @@ plot(af_clim, xlim = c(-20, 40), ylim = c(-15, 15), axes = F,
      col = viridis::cividis(100), add = T)
 
 ```
+
+
+```{r}
+bioclim <- clim
+point <- SpatialPoints(data.frame(long = 13.919876, lat = 1.587391), proj4string = bioclim@crs)
+clim_values <- raster::extract(bioclim, point)
+```
+
+## try with chelsa database
+
+bioclim data from 1981 to 2010
+
+```{bash}
+cd /shared/projects/most_kmer/afterkiss/bioclim
+wget --no-host-directories --input-file=envidatS3paths.txt
+```
+
+run the codes below with the script `download_bioclim_chelsa_AF.R`
+```{r}
+climdata_dir <- "./bioclim"
+climdata_chelsa <- list.files(climdata_dir, pattern = "CHELSA_bio\\d+_1981-2010_V.2.1.tif", full.names = T)
+bioclim_chelsa <- raster::stack(climdata_chelsa)
+
+envirvar_chelsa <- do.call(rbind, lapply(1:nrow(samples), function(i) {
+  # clim <- getData(name = "worldclim", var = "bio", res = 0.5, lat = na.omit(samples$Lat)[i], lon = na.omit(samples$Long)[i])
+  # elev <- getData(name = "SRTM", lat = na.omit(samples$Lat)[i], lon = na.omit(samples$Long)[i])
+  print(i)
+  point <- SpatialPoints(data.frame(long = na.omit(samples$Long)[i], lat = na.omit(samples$Lat)[i]), proj4string = bioclim_chelsa@crs)
+  clim_values <- raster::extract(bioclim_chelsa, point)
+  elev_value <- raster::extract(elev, point)
+  colnames(clim_values) <- gsub("(CHELSA_|_1981.2010_V.2.1)", "", colnames(clim_values))
+  df <- data.frame(Label = samples$Label[i], 
+                   clim_values, 
+                   elevation = elev_value,
+                   Long = samples$Long[i], Lat = samples$Lat[i],
+                   snp_group = samples$snp_group[i])
+  return(df)
+}))
+```
+
+compare chelsa and the worldclim data 
+```{r}
+envirvar_chelsa <- read.csv("climatic_variables_af_chelsa.csv")
+write.csv(envirvar_chelsa[,1:21], 
+          "/shared/projects/most_kmer/afterkiss/gea/lfmm/lfmm_explanatory_af_chelsa.csv",
+          quote = F, row.names = F)
+for (i in c(2:21)) print(cor(envirvar[,i], envirvar_chelsa[,i]))
+```
+
+## Climatic data of the occurences in Vietnam
+
+```{r}
+occ_file <- "occ_coffee_vnm.csv"
+occurence <- read.csv(occ_file)
+```
+get bioclim variables for the occurence with the script `download_bioclim_chelsa_VN.R` 

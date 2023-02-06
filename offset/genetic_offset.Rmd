@@ -1,0 +1,221 @@
+---
+title: "Adaptability of Vietnamese Robusta coffee to local climate"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(tibble)
+library(ggplot2)
+library(sf)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(ggfortify)
+library(viridis)
+```
+
+```{r}
+group_col <- c("#30123BFF", "#28BBECFF", "#A2FC3CFF", "#FB8022FF", "#7A0403FF", "gray", "black")
+names(group_col) <- c("ER", "OB", "C", "AG", "D", "admixed", "Vietnam")
+```
+
+## Occurrences in the central highlands
+
+```{r}
+# vn_clim_file <- "../bioclim/climatic_variables_vn_chelsa.csv"
+vn_clim_file <- "../bioclim/climatic_variables_vn_wc2.1.csv"
+vn_clim <- read.csv(vn_clim_file)
+unique(vn_clim$province)
+## robusta is supposed to be grown mainly in most of provinces in the central highlands except for Lam Dong where arabica is grown
+rob_ch_clim <- vn_clim %>% 
+  filter(!province %in% c("Lâm Đồng", "Bình Định", "Bình Phước", "Khánh Hòa")) %>% 
+  column_to_rownames("Label") %>% 
+  dplyr::rename(group = snp_group)
+```
+
+
+show the occurrences on maps
+```{r}
+vn <- getData("GADM", country = "VN", level = 1)
+vn_pol <- st_as_sf(vn)
+
+district <- getData("GADM", country = "VN", level = 2)
+dt_pol <- st_as_sf(district)
+ggplot() +
+  geom_sf(data = dt_pol, fill = "white", color = "#c2d4f0", size = 0.3) +
+  geom_sf(data = vn_pol, fill = NA, color = "#8bb0e8") + 
+  geom_point(data = rob_ch_clim, 
+             aes(x = Long, y = Lat, shape = province), 
+             color = "black") +
+  theme_void() + 
+  ylim(c(11, 16)) + xlim(c(106, 110)) +
+  scale_shape_manual(values = c(0:3, 8, 10))
+```
+
+## Project VN bioclim data to PCA of African bioclim
+
+```{r}
+af_clim_file <- "../bioclim/climatic_variables_af_wc2.1.csv"
+# af_clim_file <- "../bioclim/climatic_variables_af_chelsa.csv"
+af_clim <- read.csv(af_clim_file)
+af_clim <- af_clim %>% 
+  # select(1:20) %>% 
+  column_to_rownames("Label") %>% 
+  dplyr::rename(group = snp_group) %>% 
+  filter(group != "hb") %>% 
+  mutate(group = case_when(group %in% c("A", "G") ~ "AG",
+                           group %in% c("E", "R") ~ "ER",
+                           group %in% c("O", "B") ~ "OB",
+                           # group == "hb" ~ "admixed",
+                           TRUE ~ group)) 
+```
+
+```{r}
+rbind(af_clim %>% select(1:19, group),
+      rob_ch_clim %>% select(1:19, group)) %>% 
+  rownames_to_column("id") %>% 
+  pivot_longer(cols = 2:20, names_to = "variable") %>% 
+  mutate(variable = factor(variable, levels = str_sort(unique(variable), numeric = T))) %>% 
+  ggplot() +
+  facet_wrap(~ variable, ncol = 5, scale = "free") +
+  geom_density(aes(value, color = group, fill = group), alpha = 0.5) +
+  scale_color_manual(values = group_col[-6]) +
+  scale_fill_manual(values =  group_col[-6]) +
+  theme_minimal()
+  
+```
+
+
+```{r}
+afclim_pca <- prcomp(af_clim[,1:19], scale. = T)
+summary(afclim_pca)
+ggbiplot::ggscreeplot(afclim_pca) + theme_minimal()
+autoplot(afclim_pca, x = 1, y = 2,
+         data = af_clim, colour = 'group', size = 2,
+         loadings = TRUE, loadings.colour = 'blue',
+         loadings.label = TRUE, loadings.label.size = 6, 
+         loadings.label.repel = T,
+         loadings.label.colour = "blue", frame = T) +
+  theme_minimal() + 
+  scale_colour_manual(values = group_col[1:5]) +
+  scale_fill_manual(values = group_col[1:5]) 
+
+```
+
+
+
+```{r}
+all_clim <- rbind(af_clim %>% select(1:20, group) %>% mutate(province = "Africa"),
+                  rob_ch_clim %>% select(1:20, group, province))
+
+vnclim_sc <- scale(rob_ch_clim[,1:19], center = afclim_pca$center)
+vnclim_pd <- vnclim_sc %*% afclim_pca$rotation
+
+climproj <- afclim_pca
+climproj$x <- rbind(climproj$x, vnclim_pd)
+autoplot(climproj, x = 1, y = 2,
+         data = all_clim, colour = 'group', size = 2, shape = 'province',
+         loadings = TRUE, loadings.colour = 'blue',
+         loadings.label = TRUE, loadings.label.size = 6,
+         loadings.label.repel = T,
+         loadings.label.colour = "blue", frame = T) +
+  theme_minimal() + 
+  scale_colour_manual(values = group_col[-6]) +
+  scale_fill_manual(values = group_col[-6]) +
+  scale_shape_manual(values = c(16, 0:3, 8, 10), name = "location")
+```
+
+```{r}
+allclim_pca <- prcomp(af_clim[,1:19], scale. = T, newdata = rob_ch_clim[,1:19])
+```
+
+
+
+## Climate distance
+
+```{r}
+euclidist <- function(x) {
+  e <- sqrt(sum(sapply(x, function(v) v**2)))
+  return(e)
+}
+euclidist(c(3,4))
+```
+
+
+central point of each district to central point of African group
+
+```{r}
+mean_district <- vnclim_pd %>% 
+  as.data.frame() %>% 
+  select(PC1:PC5) %>% 
+  rownames_to_column("id") %>% 
+  mutate(district = rob_ch_clim$district,
+         province = rob_ch_clim$province) %>% 
+  pivot_longer(cols = PC1:PC5, names_to = "PC") %>% 
+  group_by(district, province, PC) %>% 
+  dplyr::summarise(mean_occ = mean(value), .groups = "drop")
+
+group_mean <- afclim_pca$x %>% 
+  as.data.frame() %>% 
+  select(PC1:PC5) %>% 
+  rownames_to_column("id") %>% 
+  mutate(group = af_clim$group) %>% 
+  pivot_longer(cols = PC1:PC5, names_to = "PC") %>% 
+  group_by(group, PC) %>% 
+  dplyr::summarise(mean_group = mean(value), .groups = "drop")
+
+occ_group_dist <- full_join(mean_district, group_mean, by = "PC") %>% 
+  # filter(PC %in% c("PC1", "PC2")) %>% 
+  mutate(distance = mean_occ - mean_group) %>% 
+  group_by(district, province, group) %>% 
+  dplyr::summarise(euclidean_distance = euclidist(distance), .groups = "drop") %>% 
+  arrange(province, district) %>% 
+  mutate(district = factor(district, levels = unique(district)))
+
+ggplot(occ_group_dist) + 
+  facet_grid(cols = vars(province), scales = "free", space = "free") + 
+  geom_point(aes(x = district, y = euclidean_distance, 
+                 color = group, shape = province), size = 4) +
+  geom_line(aes(x = district, y = euclidean_distance, 
+                 color = group, group = group)) +
+  scale_color_manual(values = group_col[1:5]) +
+  scale_shape_manual(values = c(0:3, 8, 10)) + 
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 90, h = 1))
+```
+
+
+
+```{r}
+dist_yield <- inner_join(occ_group_dist, yield, by = c("district", "province"))
+ggplot(dist_yield) + 
+  facet_grid(cols = vars(province), scales = "free", space = "free") + 
+  geom_point(aes(x = district, y = yield, 
+                 color = group, shape = province), size = 4) +
+  geom_line(aes(x = district, y = yield, 
+                 color = group, group = group)) +
+  scale_color_manual(values = group_col[1:5]) +
+  scale_shape_manual(values = c(0:3, 8, 10)) + 
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 90, h = 1))
+```
+
+
+```{r}
+ggplot(dist_yield %>% filter(!province %in% c("Bình Phước")), aes(x = euclidean_distance, y = yield, color = group)) + 
+  facet_grid(cols = vars(group), scales = "free") +
+  geom_point() +
+  geom_smooth(method = 'lm', formula = y~x) + 
+  theme_minimal() +
+  scale_color_manual(values = group_col[1:5])
+dist_yield %>% 
+  filter(!province %in% c("Bình Phước")) %>% 
+  group_by(group) %>% 
+  dplyr::summarise(cor(euclidean_distance, yield))
+```
+
+
+**TODO:**
+- point shape for province
+- correlation for all the groups

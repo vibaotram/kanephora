@@ -1,0 +1,697 @@
+---
+title: "Detection of k-mers associated to bioclim variables"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(data.table)
+library(tidyverse)
+library(Biostrings)
+library(karyoploteR)
+```
+
+
+This work is mainly done on IFB cluster.
+
+
+## Objectives
+The purpose is to detect kmers associated with bioclim variables (and maybe also elevation data), using the native samples in Africa.    
+Firstly, the Kiss pipeline will be applied to obtain a kmer data set, and detect kmers under selection (associated with population structure, that will be useful for the association test).   
+Secondly, I will apply lfmm with different strategies (the whole kmer data set, the putatively adaptive kmers, putatively adaptive kmers + neutral kmers). Then, I will check the distribution of the p-values and/or q-values to determine which strategy is better in terms of minimizing false positives. 
+Finally, the significant kmers will be mapped on the reference genome and assembled for annotations ... (to be developed)
+
+
+## Previously sequenced samples
+
+55 African individuals were sequenced using Illumina.  
+They are representative of the 8 genetic groups and consist of some admixed individuals.  
+
+They were cleaned by filtering adapters and trimming low-quality read bases.
+
+removing adapters by fastp 0.23.1: 
+`fastp --detect_adapter_for_pe --disable_quality_filtering --disable_length_filtering`  
+trimming read bases < Q20 (min read length = 35) by cutadapt 3.1: 
+`cutadapt -m 35 -q 20,20`
+
+The clean reads are available in `/data/projects/rob/data/raw_fastq_2019` on iTrop,
+and `/shared/projects/elai_most/data/fastq/fastq_2019_clean` on IFB.
+
+```{r}
+sum_fastqc <- function(stat_file) {
+  all_stats <- read.delim(stat_file)
+  
+  min_read_length <- all_stats %>% 
+    pull(FastQC_mqc.generalstats.fastqc.avg_sequence_length) %>% 
+    min()
+  max_read_length <- all_stats %>% 
+    pull(FastQC_mqc.generalstats.fastqc.avg_sequence_length) %>% 
+    max()
+  
+  min_num_seq <- all_stats %>% 
+    pull(FastQC_mqc.generalstats.fastqc.total_sequences) %>% 
+    min()
+  max_num_seq <- all_stats %>% 
+    pull(FastQC_mqc.generalstats.fastqc.total_sequences) %>% 
+    max()
+  
+  min_cov <- all_stats %>% 
+    mutate(coverage = FastQC_mqc.generalstats.fastqc.total_sequences*2*FastQC_mqc.generalstats.fastqc.avg_sequence_length/750000000) %>% 
+    pull(coverage) %>% min
+  max_cov <- all_stats %>% 
+    mutate(coverage = FastQC_mqc.generalstats.fastqc.total_sequences*2*FastQC_mqc.generalstats.fastqc.avg_sequence_length/750000000) %>% 
+    pull(coverage) %>% max
+  
+  cat("- Read length:", min_read_length, "-", max_read_length, "\n")
+  cat("- Number of sequences:", min_num_seq*2, "-", max_num_seq*2, "\n")
+  cat("- Coverage:", min_cov, "-", max_cov, "\n")
+}
+```
+
+
+```{r}
+sum_fastqc("/shared/projects/afrob_seq/wgs_snp/vcf_bgi_2021/gbp_output/fastqc/multiqc/fastqc_data/multiqc_general_stats.txt")
+```
+
+
+Clean reads    
+- Read length: 88 - 150
+- Number of sequences: 76M - 704M   
+- Coverage: 10 - 92    
+- Base quality: > 25    
+- No adapter contamination    
+
+Make a soft link to a seperate folder to run Kiss more easily
+
+```{bash}
+kiss_fastq=/shared/projects/most_kmer/kiss_af/fastq
+mkdir -p $kiss_fastq
+ln -s /shared/projects/elai_most/data/fastq/fastq_2019_clean/[^TR,^S]*/*.f*q.gz $kiss_fastq/
+```
+
+
+## Newly sequenced samples
+
+We selected 5 African samples with more pure genetic structure based on snmf results using kasp SNPs (together with other 15 African + 2 VN samples).    
+These samples were degraded (level B or C on BGI quality report, and so some digestion step was skipped).   
+Therefore, we need to check carefully the sequecing quality.    
+The data is currently stored in `/shared/projects/afrob_seq/fastq_2022` on IFB
+
+```{bash rename_fastq}
+fastqfiles=$(ls /shared/projects/afrob_seq/fastq_2022/Reads/Clean/*/*)
+newpath=/shared/projects/afrob_seq/fastq_2022/renamed
+mkdir $newpath
+for f in $fastqfiles
+do
+    sample=$(echo $(basename $(dirname $f)) | sed 's/A//')
+    read=$(echo ${f:(-7)})
+    mkdir -p $newpath/$sample
+    ln -s $f $newpath/$sample/$sample"_"$read
+done
+ll $newpath
+```
+
+```{bash quality_control}
+mkdir -p /shared/projects/afrob_seq/fastq_2022/quality
+cd /shared/projects/afrob_seq/fastq_2022/quality
+nano qc_config.yaml
+nano run_qc.sh
+sbatch run_qc.sh
+```
+
+```{r}
+sum_fastqc("/shared/projects/afrob_seq/fastq_2022/quality/fastqc/fastqc_data/multiqc_general_stats.txt")
+```
+
+
+The reads were preprocessed and cleaned by BGI (22 samples)    
+- Read length: 150
+- Number of read bases: 44M - 248M   
+- Coverage: 9 - 49    
+- Base quality: > 25    
+- No adapter contamination    
+
+
+
+Even though the reads are of good quality, I keep cleaning them in the same way as for the previous data.   
+The scripts for cleaning the previous data is [here](/shared/projects/afrob_seq/wgs_snp/vcf_bgi_2021/config/clean_fastq_2019.sh)    
+
+
+```{bash}
+cd ..
+mkdir cleaned_reads
+cd cleaned_reads
+nano clean_fastq.sh
+sbatch clean_fastq.sh
+```
+
+
+Check the quality of the cleaned reads
+
+```{bash}
+cd ../
+mkdir quality_cleaned
+cp quality/qc_config.yaml quality_cleaned/
+cp quality/run_qc.sh quality_cleaned/
+nano quality_cleaned/qc_config.yaml 
+nano quality_cleaned/run_qc.sh
+sbatch quality_cleaned/run_qc.sh
+```
+
+Cleaned reads:
+```{r}
+sum_fastqc("/shared/projects/afrob_seq/fastq_2022/quality_cleaned/fastqc/fastqc_data/multiqc_general_stats.txt")
+```
+
+- Read length: 148.2436 - 149.3562 
+- Number of sequences: 44M - 247M
+- Coverage: 8.827241 - 49.28375
+
+Make a soft link of 5 new samples to the fastq folder for kiss
+
+```{bash}
+kiss_fastq=/shared/projects/most_kmer/kiss_af/fastq
+mkdir -p $kiss_fastq
+ln -s /shared/projects/afrob_seq/fastq_2022/renamed/[C,D]*/*.f*q.gz $kiss_fastq/
+fastq_files=$(ls $kiss_fastq)
+
+# rename the new seqs to have homogenous name format for all the samples
+for f in $fastq_files 
+do
+    if [[ $f =~ fq ]]
+    then 
+        echo -e "$f"
+        sample=$(echo $f | cut -d "_" -f 1)
+        read=$(echo $f | cut -d "_" -f 2 | cut -d "." -f 1)
+        new_name=$sample"_R"$read".fastq.gz"
+        echo -e $new_name
+        cd $kiss_fastq
+        mv $f $new_name
+    fi
+done
+```
+
+
+## Climatic data
+
+Climatic data for the African samples was extracted by `climatic_data.Rmd` and stored in `gea/climatic_variables_2.1.csv`
+
+
+## Extract k-mers and detect k-mers under selection
+
+results in `/shared/projects/most_kmer/kiss_af`  
+
+
+1,856,279,562 k-mers in total  
+410,304,144 k-mers under selection
+
+
+## LFMM results using only outlier kmers
+
+check if all the runs are done
+```{r}
+lfmm_out <- "./gea/lfmm/out_K5_outlier"
+real <- dirname(list.files(lfmm_out, "candidates_kmers.csv", full.names = F, recursive = T))
+length(real)
+
+n <- 1856
+expect <- sapply(1:n, function(r) {
+  if (r %% 100 == 0) {
+    b <- r/100 - 1
+    s <- 100
+  } else {
+    b <- r %/% 100
+    s <- r %% 100
+  }
+  return(paste(b, s, sep = "_"))
+})
+length(expect)
+
+# files that haven't finished
+expect[!expect %in% real]
+```
+
+gather all the lfmm results for all the k-mer batches using the log files (faster i think)
+
+```{r}
+log_K5 <- "./gea/lfmm/log_K5_outlier"
+log_files <- list.files(log_K5, pattern = ".log", full.names = T)
+n <- length(log_files)
+
+cand_kmers <- do.call(rbind, lapply(1:n, function(i) {
+  cat(i, "\n")
+  df <- fread(log_files[i], skip = 12, nrows = 21, sep = "\t", 
+              data.table = FALSE)
+  df <- df %>% mutate(batch = i)
+  return(df)
+  })
+  )
+
+sum_cand_kmers <- cand_kmers %>% 
+  dplyr::group_by(variable) %>% 
+  summarise(across(significant_kmers:significant_outliers, ~ sum(.x))) %>% 
+  arrange(desc(significant_outliers))
+
+format(as.data.frame(sum_cand_kmers), big.mark = ",")
+
+can_files <- list.files("./gea/lfmm/out_K5_outlier", 
+                        pattern = "candidates_kmers.csv", 
+                        full.names = T, recursive = T)
+can_count <- lapply(can_files, fread)
+all_can <- do.call(rbind, can_count)
+dim(all_can)
+```
+
+
+    variable significant_kmers significant_outliers
+1      bio_2        30,012,712           30,012,712
+2      bio_7        27,404,828           27,404,828
+3      bio_3         9,000,933            9,000,933
+4     bio_15         8,688,835            8,688,835
+5     bio_14         2,803,076            2,803,076
+6      bio_9         2,052,938            2,052,938
+7      bio_1         1,942,297            1,942,297
+8      bio_6         1,874,238            1,874,238
+9     bio_17         1,844,878            1,844,878
+10     bio_5         1,672,097            1,672,097
+11    bio_12         1,498,292            1,498,292
+12    bio_13         1,435,270            1,435,270
+13    bio_11         1,343,750            1,343,750
+14     bio_8         1,150,733            1,150,733
+15 elevation           909,767              909,767
+16     bio_4           645,615              645,615
+17    bio_10           508,358              508,358
+18    bio_18           355,445              355,445
+19    bio_16           174,929              174,929
+20    bio_19            34,923               34,923
+in total: 48,995,113
+
+```{r}
+log_K5_chelsa <- "./gea/lfmm/log_K5_outlier_chelsa/"
+log_K5_chelsa_files <- list.files(log_K5_chelsa, pattern = ".log", full.names = T)
+n <- length(log_K5_chelsa_files)
+
+cand_kmers_chelsa <- do.call(rbind, lapply(1:n, function(i) {
+  cat(i, "\n")
+  df <- fread(log_K5_chelsa_files[i], skip = 12, nrows = 21, sep = "\t", 
+              data.table = FALSE)
+  df <- df %>% mutate(batch = i)
+  return(df)
+  })
+  )
+
+sum_cand_kmers_chelsa <- cand_kmers_chelsa %>% 
+  dplyr::group_by(variable) %>% 
+  dplyr::summarise(across(significant_kmers:significant_outliers, ~ sum(.x))) %>% 
+  arrange(desc(significant_outliers))
+
+format(as.data.frame(sum_cand_kmers_chelsa), big.mark = ",")
+
+can_files_chelsa <- list.files("./gea/lfmm/out_K5_outlier_chelsa/", 
+                        pattern = "candidates_kmers.csv", 
+                        full.names = T, recursive = T)
+can_count_chelsa <- lapply(can_files_chelsa, fread)
+all_can_chelsa <- do.call(rbind, can_count_chelsa)
+# number of significant kmers
+nrow(all_can_chelsa)
+# number of significant outliers
+length(all_can_chelsa$sequence[all_can_chelsa$outlier])
+```
+
+
+## LFMM results using all kmers
+
+check if all the runs are done
+```{r}
+lfmm_out <- "./gea/lfmm/out_K5"
+real <- dirname(list.files(lfmm_out, "candidates_kmers.csv", full.names = F, recursive = T))
+length(real)
+
+n <- 1856
+expect <- sapply(1:n, function(r) {
+  if (r %% 100 == 0) {
+    b <- r/100 - 1
+    s <- 100
+  } else {
+    b <- r %/% 100
+    s <- r %% 100
+  }
+  return(paste(b, s, sep = "_"))
+})
+length(expect)
+
+# files that haven't finished
+expect[!expect %in% real]
+```
+
+gather all the lfmm results for all the k-mer batches using the log files (faster i think)
+
+```{r}
+log_K5 <- "./gea/lfmm/log_K5"
+log_files <- list.files(log_K5, pattern = ".log", full.names = T)
+n <- length(log_files)
+
+cand_kmers <- do.call(rbind, lapply(1:n, function(i) {
+  cat(i, "\n")
+  df <- fread(log_files[i], skip = 12, nrows = 21, sep = "\t", 
+              data.table = FALSE)
+  df <- df %>% mutate(batch = i)
+  return(df)
+  })
+  )
+
+sum_cand_kmers <- cand_kmers %>% 
+  dplyr::group_by(variable) %>% 
+  summarise(across(significant_kmers:significant_outliers, ~ sum(.x))) %>% 
+  arrange(desc(significant_outliers))
+
+format(as.data.frame(sum_cand_kmers), big.mark = ",")
+
+can_files <- list.files("./gea/lfmm/out_K5", 
+                        pattern = "candidates_kmers.csv", 
+                        full.names = T, recursive = T)
+can_count <- lapply(can_files, fread)
+all_can <- do.call(rbind, can_count)
+# number of significant kmers
+nrow(all_can)
+# number of significant outliers
+length(all_can$sequence[all_can$outlier])
+```
+
+
+    variable significant_kmers significant_outliers
+1      bio_7        46,295,609           15,209,945
+2      bio_2        39,549,887           12,989,670
+3      bio_6        24,400,908            8,025,601
+4      bio_5        22,509,920            7,403,012
+5      bio_3        21,516,670            7,272,921
+6     bio_15        21,693,587            7,066,614
+7     bio_18         8,244,191            2,901,733
+8     bio_12         7,338,038            2,653,891
+9     bio_11         6,753,399            1,923,549
+10     bio_8         4,433,745            1,534,612
+11     bio_1         3,317,872            1,147,873
+12    bio_13         2,374,762              957,389
+13     bio_9         2,805,126              907,330
+14    bio_17         2,199,302              733,119
+15    bio_14         1,270,101              501,134
+16 elevation         1,394,007              479,655
+17     bio_4           981,808              222,915
+18    bio_10           107,796               38,276
+19    bio_19            36,104                3,483
+20    bio_16                 0                    0
+105,180,163
+
+-> use significant kmers from output of lfmm on all kmers, because this takes into account both outliers and neutral kmers
+
+## Assembly of associated k-mers using mergeTags
+
+try [mergeTags](https://github.com/Transipedia/dekupl-mergeTags)
+
+install mergeTags
+```{bash}
+ssh baotram@core.cluster.france-bioinformatique.fr
+cd /shared/ifbstor1/projects/most_kmer/afterkiss/gea
+mkdir assembly
+cd assembly
+git clone https://github.com/Transipedia/dekupl-mergeTags.git
+cd dekupl-mergeTags
+make
+```
+
+test mergeTags
+```{bash}
+mkdir test
+cd test
+nano merged_lfmm_pvalues.csv
+awk '{print $1"\t"$4"\t"$4"\t"$4"\t"$3}' merged_lfmm_pvalues.csv > merged_lfmm_pvalues2mergetags.csv
+../dekupl-mergeTags/mergeTags -k 31 -m 15 -n merged_lfmm_pvalues2mergetags.csv > out_merged_lfmm_pvalues2mergetags.csv
+```
+
+run mergeTags on the all associated k-mers (with minimum overlap = 15)
+
+
+```{r}
+fwrite(all_can %>% relocate(sequence), 
+       "./assembly/significant_kmers_lfmm.tsv", 
+       sep = "\t", row.names = F)
+```
+
+
+
+
+```{bash}
+sbatch /shared/ifbstor1/projects/most_kmer/afterkiss/gea/assembly/mergeTags_assembly.sh
+```
+
+### with m 15 (default)
+```{r}
+mergeTags_out <- "./assembly/mergeTags_significant_kmers_lfmm_m15.tsv"
+mT_contigs <- fread(mergeTags_out, data.table = F)
+unassembled <- mT_contigs %>% 
+  filter(nb_merged_kmers == 1)
+contigs <- mT_contigs %>% 
+  filter(nb_merged_kmers != 1)
+```
+-> 14,842,939 unassembled k-mers
+-> 21,841,084 contigs
+
+
+analyse contigs
+```{r}
+contigs <- contigs %>% 
+  # filter(nb_merged_kmers > 100) %>% 
+  mutate(contig_length = str_count(contig))
+
+sum_merged_kmers <- contigs %>% 
+  mutate(nb_kmers_ranges = cut(nb_merged_kmers,
+                               c(min(contigs$nb_merged_kmers), 
+                                 seq(100, 500, 100), 
+                                 max(contigs$nb_merged_kmers)),
+                               dig.lab = 5,
+                               include.lowest = T, right = F)) %>% 
+  group_by(nb_kmers_ranges) %>% 
+  summarise(nb_kmers = n())
+
+sum_ct_length <- contigs %>% 
+  mutate(contig_length_ranges = cut(contig_length, 
+                                    c(min(contigs$contig_length), 500,
+                                      1000, 1500, 2000,
+                                      max(contigs$contig_length)),
+                                    dig.lab = 5,
+                                    include.lowest = T, right = F)) %>% 
+  group_by(contig_length_ranges) %>% 
+  summarise(nb_contigs = n())
+```
+
+
+```{r}
+# number of contigs associated with each bioclim variables
+bio_contigs <- contigs %>% 
+  select(bio_1:elevation) %>% 
+  summarise(across(everything(), ~ sum(.)))
+contigs %>% 
+  rowwise() %>% 
+  mutate(n_bio = across(bio_1:elevation, ~ sum(.)))
+```
+
+```{r}
+long_contigs <- contigs %>% 
+  filter(contig_length > 100)
+long_contigs$contig_id <- paste0("contig_", 1:nrow(long_contigs))
+```
+
+
+
+
+```{r}
+hist(contigs$nb_merged_kmers, breaks = 1000)
+ggplot(contigs %>% filter(nb_merged_kmers > 100)) +
+  geom_histogram(aes(x = nb_merged_kmers), binwidth = 100) +
+  theme_minimal() +
+  scale_y_sqrt(breaks = c(0, 10, 100, 1000, 2000, 3000, 4000)) 
+min(contigs$nb_merged_kmers)
+max(contigs$nb_merged_kmers)
+
+
+ggplot(contigs) +
+  geom_histogram(aes(x = contig_length), binwidth = 100) +
+  theme_minimal() +
+  scale_y_sqrt() 
+min(contigs$contig_length)
+max(contigs$contig_length)
+```
+
+
+```{r}
+long_contigs <- contigs %>% 
+  filter(contig_length > 60)
+
+ggplot(long_contigs) +
+  geom_histogram(aes(x = nb_merged_kmers), binwidth = 100) +
+  theme_minimal() +
+  scale_y_sqrt(breaks = c(0, 10, 100, 1000, 5000, 10000)) 
+
+ggplot(long_contigs) +
+  geom_histogram(aes(x = contig_length), binwidth = 100) +
+  theme_minimal() +
+  scale_y_sqrt()
+```
+
+
+### with m 21
+
+```{r}
+mergeTags21_out <- "./assembly/mergeTags_significant_kmers_lfmm_m21.tsv"
+mT_res_21 <- fread(mergeTags21_out, data.table = F)
+# unassembled_m30 <- mT_res_30 %>% 
+#   filter(nb_merged_kmers == 1)
+contigs_m21 <- mT_res_21 %>% 
+  filter(nb_merged_kmers != 1) %>% 
+  # filter(nb_merged_kmers > 61) %>% 
+  mutate(contig_length = str_count(contig))
+nrow(mT_res_21) - nrow(contigs_m21)
+```
+-> 30,645,634 unassembled kmers
+-> 22,767,142 contigs
+
+
+
+```{r}
+long_contigs_m21 <- contigs_m21 %>% 
+  filter(contig_length > 60)
+nrow(long_contigs_m21)
+```
+-> 964,556 contigs >= 61 bp
+
+```{r}
+ggplot(contigs_m21) +
+  geom_histogram(aes(x = nb_merged_kmers), binwidth = 100) +
+  theme_minimal() +
+  scale_y_sqrt(breaks = c(0, 10, 100, 1000, 2000, 3000, 4000)) 
+
+min(contigs_m21$nb_merged_kmers)
+max(contigs_m21$nb_merged_kmers)
+
+
+ggplot(contigs_m21) +
+  geom_histogram(aes(x = contig_length), binwidth = 100) +
+  theme_minimal() +
+  scale_y_sqrt() 
+```
+
+
+```{r}
+contigs_m21 %>% 
+  filter(nb_merged_kmers > 30)
+
+sum_merged_kmers_m21 <- contigs_m21 %>% 
+  mutate(nb_kmers_ranges = cut(nb_merged_kmers,
+                               c(min(contigs_m21$nb_merged_kmers), 
+                                 seq(10, 150, 10), 
+                                 max(contigs_m21$nb_merged_kmers)),
+                               dig.lab = 5,
+                               include.lowest = T, right = F)) %>% 
+  group_by(nb_kmers_ranges) %>% 
+  summarise(nb_contigs = n())
+
+sum_ct_length_m21 <- contigs_m21 %>% 
+  mutate(contig_length_ranges = cut(contig_length, 
+                                    c(min(contigs_m21$contig_length),
+                                      seq(50, 500, 50), 
+                                      max(contigs_m21$contig_length)),
+                                    dig.lab = 5,
+                                    include.lowest = T, right = F)) %>% 
+  group_by(contig_length_ranges) %>% 
+  summarise(nb_contigs = n())
+```
+
+```{r}
+ggplot(sum_merged_kmers_m21, aes(x = nb_kmers_ranges, y = nb_contigs)) + 
+  geom_col() + 
+  geom_text(aes(label = nb_contigs), vjust = -1) + 
+  scale_y_sqrt() + 
+  theme_minimal() +
+  xlab("Number of merged k-mers in contigs") +
+  ylab("Number of contigs")
+
+ggplot(sum_ct_length_m21, aes(x = contig_length_ranges, y = nb_contigs)) + 
+  geom_col() + 
+  geom_text(aes(label = nb_contigs), vjust = -1) + 
+  scale_y_sqrt() + 
+  theme_minimal() +
+  xlab("Contig length") +
+  ylab("Number of contigs")
+```
+
+## Assembly of associated k-mers using abyss
+
+```{r}
+kmer_set <- BStringSet(all_can$sequence)
+names(kmer_set) <- paste0("kmer_", 1:length(kmer_set))
+writeXStringSet(kmer_set, "./assembly/significant_kmers.fasta")
+```
+
+## Blast of assembled contigs
+
+## for contigs assembled by m15
+```{r}
+long_contigs$contig_id <- paste0("contig_", 1:nrow(long_contigs))
+contigs4blast <- BStringSet(long_contigs$contig)
+names(contigs4blast) <- long_contigs$contig_id
+
+writeXStringSet(contigs4blast, "./assembly/contigs_m15.fasta", format = "fasta")
+```
+
+
+```{r}
+blast_out <- "./assembly/all_contigs_m15_blast_result.txt"
+blast_contigs <- fread(blast_out)
+colnames(blast_contigs) <- c("contig_id", "mapped_chr", "start", "end", "mapped_start", "mapped_end", "identity", "gaps", "mismatches", "align_length")
+
+blast_contigs %>% 
+  # filter(evalue < 0.01) %>% 
+  arrange(desc(align_length))
+
+long_contigs %>% 
+  filter(contig_id %in% blast_contigs$contig_id) %>% 
+  slice_max(contig_length)
+long_contigs %>% 
+  filter(contig_id == "contig_611870")
+
+blast_contigs %>% 
+  filter(contig_id == "contig_611870") %>% 
+  group_by(mapped_chr) %>% 
+  summarise(n = n())
+
+blast_contigs %>% 
+  filter(!grepl("Contig", mapped_chr)) %>% 
+  group_by(contig_id) %>% 
+  summarise(n_hits = n()) %>% 
+  arrange(n_hits) %>% 
+  filter(n_hits == 1)
+
+blast_contigs %>% 
+  filter(contig_id == "contig_3531067") %>% 
+  # filter(contig_id %in% blast_contigs$contig_id) %>% 
+  group_by(mapped_chr) %>% 
+  summarise(n = n())
+
+blast_contigs %>% 
+  filter(align_length > 100)
+```
+
+
+## for contigs assembled by m21
+```{r}
+long_contigs_m21$contig_id <- paste0("contig_", 1:nrow(long_contigs_m21))
+contigs4blast <- BStringSet(long_contigs_m21$contig)
+names(contigs4blast) <- long_contigs_m21$contig_id
+
+writeXStringSet(contigs4blast, "./assembly/contigs_m21.fasta", format = "fasta")
+```
+
+```{r}
+
+```
+

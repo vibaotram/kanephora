@@ -190,44 +190,74 @@ dev.off()
 
 ## output candidates separately for each explanatory variable (under construction)
 
-cat("variable\tgif_calibration_kmers\tgif_calibration_outliers\tfdr_control_kmer\tfdr_control_outliers\n")
+fdr_cands_df <- data.frame()
+
+cat("variable\tsignificant_kmers\tsignificant_outliers\n")
 for (c in 1:ncol(pv$calibrated.pvalue)) {
   # select kmers with pvalue < 0.05
-  pv_cands <- rownames(pv$calibrated.pvalue)[pv$calibrated.pvalue[,c] < 0.05]
-  if (length(pv_cands) == 0) pv_cands <- NA
-  pv_cands_df <- data.frame(bedname = gsub(".bed", "", basename(bedfile)),
-                            segment_nb = gsub(".csv", "", basename(kmerfile)),
-                            sequence = pv_cands,
-                            outlier = pv_cands %in% selective_kmers)
+  # pv_cands <- rownames(pv$calibrated.pvalue)[pv$calibrated.pvalue[,c] < 0.05]
+  # if (length(pv_cands) == 0) {
+  #   pv_cands_df <- NULL
+  #   } else {
+  #     pv_cands_df <- data.frame(bedname = gsub(".bed", "", basename(bedfile)),
+  #                               segment_nb = gsub(".csv", "", basename(kmerfile)),
+  #                               sequence = pv_cands,
+  #                               outlier = pv_cands %in% selective_kmers)
+  #   }
   
-  # try with FDR control of 0.05
+  
+  # try with FDR control of 0.01
   qv <- qvalue(pv$calibrated.pvalue[,c], fdr.level = 0.01, pfdr = T)
   fdr_cands <- rownames(pv$calibrated.pvalue)[qv$significant]
-  if (length(fdr_cands) == 0) fdr_cands <- NA
-  fdr_cands_df <- data.frame(bedname = gsub(".bed", "", basename(bedfile)),
-                             segment_nb = gsub("(.txt|.csv)", "", basename(kmerfile)),
-                             sequence = ifelse(length(fdr_cands) == 0, NA, fdr_cands),
-                             outlier = ifelse(length(fdr_cands) == 0, NA, fdr_cands %in% selective_kmers))
+  if (length(fdr_cands) == 0) {
+    # fdr_cands_df <- fdr_cands_df %>% 
+    #   mutate(variable = FALSE)
+    # colnames(fdr_cands_df)[length(ncol(fdr_cands_df))] <- colnames(pv$calibrated.pvalue)[c]
+    fdr_cands_var <- data.frame(bedname = gsub(".bed", "", basename(bedfile)),
+                                segment_nb = gsub("(.txt|.csv)", "", basename(kmerfile)),
+                                sequence = NA,
+                                outlier = NA,
+                                variable = FALSE)
+  } else {
+    fdr_cands_var <- data.frame(bedname = gsub(".bed", "", basename(bedfile)),
+                               segment_nb = gsub("(.txt|.csv)", "", basename(kmerfile)),
+                               sequence = fdr_cands,
+                               outlier = fdr_cands %in% selective_kmers,
+                               variable = TRUE)
+  }
+  colnames(fdr_cands_var)[5] <- colnames(pv$calibrated.pvalue)[c]
+  fdr_cands_df <- merge(fdr_cands_df, fdr_cands_var, all = T)
+  
   
   
   # cat("Number of candidate k-mers associated with", colnames(pv$calibrated.pvalue)[c], "is", length(cands), "\n")
   # cat("Number of outlier k-mers associated with", colnames(pv$calibrated.pvalue)[c], "is", length(cands[cands %in% selective_kmers]), "\n")
-  cat(colnames(pv$calibrated.pvalue)[c], 
-      length(pv_cands), 
-      length(pv_cands[pv_cands %in% selective_kmers]),
-      length(fdr_cands), 
-      length(fdr_cands[fdr_cands %in% selective_kmers]),
-      # kmerfile,
-      sep = "\t"
+  cat(
+    colnames(pv$calibrated.pvalue)[c], 
+    # length(pv_cands), 
+    # length(pv_cands[pv_cands %in% selective_kmers]),
+    length(fdr_cands), 
+    length(fdr_cands[fdr_cands %in% selective_kmers]),
+    # kmerfile,
+    sep = "\t"
       )
   cat("\n")
   
-  pvcandfile <-  file.path(outdir, paste0("candidates_gif_", colnames(pv$calibrated.pvalue)[c],".csv"))
-  write.table(pv_cands_df, pvcandfile, quote = FALSE, sep = "\t", row.names = F, col.names = F)
-
-  fdrcandfile <- file.path(outdir, paste0("candidates_fdr_", colnames(pv$calibrated.pvalue)[c],".csv"))
-  write.table(fdr_cands_df, fdrcandfile, quote = FALSE, sep = "\t", row.names = F, col.names = F)
+  # pvcandfile <-  file.path(outdir, paste0("candidates_gif_", colnames(pv$calibrated.pvalue)[c],".csv"))
+  # write.table(pv_cands_df, pvcandfile, quote = FALSE, sep = "\t", row.names = F, col.names = F)
+  # 
+  # fdrcandfile <- file.path(outdir, paste0("candidates_fdr_", colnames(pv$calibrated.pvalue)[c],".csv"))
+  # write.table(fdr_cands_df, fdrcandfile, quote = FALSE, sep = "\t", row.names = F, col.names = F)
 }
+
+fdr_cands_df <- fdr_cands_df %>% 
+  dplyr::filter(!is.na(outlier))
+
+fdr_cands_df[is.na(fdr_cands_df)] <- FALSE
+
+fdrcandfile <- file.path(outdir, "candidates_kmers.csv")
+write.table(fdr_cands_df, fdrcandfile, quote = FALSE, sep = "\t", row.names = F, col.names = T)
+
 
 # tot_cands <- pv$calibrated.pvalue[sapply(1:nrow(pv$calibrated.pvalue), function(i) any(pv$calibrated.pvalue[i,] < 0.05)),]
 # cat("Number of total candidate k-mers:", nrow(tot_cands), "\n")
@@ -241,3 +271,4 @@ for (c in 1:ncol(pv$calibrated.pvalue)) {
 # climFile <- "/shared/projects/most_kmer/kiss_af/samples/climatic_variables.csv"
 # clim <- fread(climFile)
 # selectivefile <- "/shared/projects/most_kmer/kiss_af/output/6.PCADAPT/output_file.0_1_BH0.05.pcadapt_outliers.csv"
+

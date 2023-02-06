@@ -900,6 +900,7 @@ length(signif_rda[signif_rda %in% signif_pca2])
 vn <- getData("GADM", country = "VN", level = 2)
 
 ch_provinces <- c("Lâm Đồng", "Đắk Lắk", "Đắk Nông", "Kon Tum", "Gia Lai")
+# ch_provinces <- "Đắk Lắk"
 ch_map <- vn[vn$NAME_1 %in% ch_provinces, ]
 length(ch_map$NAME_2)
 
@@ -918,11 +919,12 @@ chdist_coord <- do.call(rbind, lapply(ch_map$NAME_2, function(d) {
 ### Bioclim variables of the districts
 
 ```{r}
+
+bioclim <- readRDS("./gea/bioclim_2.1.RDS")
+elev_data <- readRDS("./gea/elevation0.5_v2.1.RDS")
 chvar <- do.call(rbind, lapply(1:nrow(chdist_coord), function(i) {
   # clim <- getData(name = "worldclim", var = "bio", res = 0.5, lat = na.omit(chdist_coord$lat)[i], lon = na.omit(chdist_coord$long)[i])
   # elev <- getData(name = "SRTM", lat = na.omit(chdist_coord$lat)[i], lon = na.omit(chdist_coord$long)[i])
-  bioclim <- readRDS("./gea/bioclim_2.1.RDS")
-  elev_data <- readRDS("./gea/elevation0.5_v2.1.RDS")
   point <- SpatialPoints(data.frame(long = na.omit(chdist_coord$long)[i], lat = na.omit(chdist_coord$lat)[i]), proj4string = bioclim@crs)
   clim_values <- raster::extract(bioclim, point)
   elev_value <- raster::extract(elev_data, point)
