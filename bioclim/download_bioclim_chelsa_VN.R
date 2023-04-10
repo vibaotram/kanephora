@@ -15,25 +15,21 @@ occurence <- read.csv(occ_file)
 vn <- getData("GADM", country = "VN", level = 2)
 
 ## bioclim data
-climdata_chelsa <- list.files(".", pattern = "CHELSA_bio\\d+_1981-2010_V.2.1.tif", full.names = T)
+climdata_chelsa <- list.files(".", pattern = "CHELSA_bio\\d+_2041-2070_gfdl-esm4_ssp585_V.2.1.tif", full.names = T)
 bioclim_chelsa <- raster::stack(climdata_chelsa)
-elevfile <- "./wc2.1_30s_elev.tif"
-elev <- raster(elevfile)
 
 envirvar_chelsa <- do.call(rbind, lapply(1:nrow(occurence), function(i) {
   print(i)
   point <- SpatialPoints(data.frame(long = na.omit(occurence$Lon)[i], lat = na.omit(occurence$Lat)[i]), proj4string = bioclim_chelsa@crs)
   clim_values <- raster::extract(bioclim_chelsa, point)
-  elev_value <- raster::extract(elev, point)
   geo <- raster::extract(vn, 
                          SpatialPoints(data.frame(
                            long = na.omit(occurence$Lon)[i], 
                            lat = na.omit(occurence$Lat)[i]
                            ), proj4string = vn@proj4string))
-  colnames(clim_values) <- gsub("(CHELSA_|_1981.2010_V.2.1)", "", colnames(clim_values))
+  colnames(clim_values) <- gsub("(CHELSA_|_2041.2070_ipsl.cm6a.lr_ssp585_V.2.1)", "", colnames(clim_values))
   df <- data.frame(Label = paste0("occ_", i), 
                    clim_values, 
-                   elevation = elev_value,
                    Long = occurence$Lon[i], Lat = occurence$Lat[i],
                    snp_group = geo$NAME_0,
                    district = geo$VARNAME_2,
@@ -41,5 +37,5 @@ envirvar_chelsa <- do.call(rbind, lapply(1:nrow(occurence), function(i) {
   return(df)
 }))
 
-write.csv(envirvar_chelsa, "./climatic_variables_vn_chelsa.csv", row.names = F)
+write.csv(envirvar_chelsa, "./climatic_variables_vn_future_gfdl.csv", row.names = F)
 # write.csv(envirvar_chelsa[,1:21], "./lfmm/explanatory_af_chelsa.csv", row.names = F)

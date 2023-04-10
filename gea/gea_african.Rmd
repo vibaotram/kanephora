@@ -9,6 +9,10 @@ library(data.table)
 library(tidyverse)
 library(Biostrings)
 library(karyoploteR)
+library(Rsamtools)
+library(rtracklayer)
+library(GenomicRanges)
+library(circlize)
 ```
 
 
@@ -404,6 +408,19 @@ length(all_can$sequence[all_can$outlier])
 
 -> use significant kmers from output of lfmm on all kmers, because this takes into account both outliers and neutral kmers
 
+## Mapping k-mers to the reference genome
+
+```{r}
+map_out <- "/shared/projects/most_kmer/kiss_af/output/10.MERGE_KMERPOSITION/kmer_position_merged.txt"
+kmer_pos <- fread(map_out)
+kmer_pos <- kmer_pos %>% filter(grepl("CC1.8", REF))
+
+
+```
+26479466 kmers on Contigs
+
+
+
 ## Assembly of associated k-mers using mergeTags
 
 try [mergeTags](https://github.com/Transipedia/dekupl-mergeTags)
@@ -462,21 +479,24 @@ analyse contigs
 contigs <- contigs %>% 
   # filter(nb_merged_kmers > 100) %>% 
   mutate(contig_length = str_count(contig))
+fwrite(contigs, "./assembly/all_contigs_m15_R.txt")
 
 sum_merged_kmers <- contigs %>% 
   mutate(nb_kmers_ranges = cut(nb_merged_kmers,
                                c(min(contigs$nb_merged_kmers), 
-                                 seq(100, 500, 100), 
+                                 seq(10, 100, 10),
+                                 seq(200, 500, 100), 
                                  max(contigs$nb_merged_kmers)),
                                dig.lab = 5,
                                include.lowest = T, right = F)) %>% 
   group_by(nb_kmers_ranges) %>% 
-  summarise(nb_kmers = n())
+  summarise(nb_contigs = n())
 
 sum_ct_length <- contigs %>% 
   mutate(contig_length_ranges = cut(contig_length, 
-                                    c(min(contigs$contig_length), 500,
-                                      1000, 1500, 2000,
+                                    c(min(contigs$contig_length), 61,
+                                      seq(100, 500, 100),
+                                      545, 1000, 2000,
                                       max(contigs$contig_length)),
                                     dig.lab = 5,
                                     include.lowest = T, right = F)) %>% 
@@ -484,6 +504,15 @@ sum_ct_length <- contigs %>%
   summarise(nb_contigs = n())
 ```
 
+```{r}
+ggplot(sum_merged_kmers, aes(x = nb_kmers_ranges, y = nb_contigs)) + 
+  geom_col() + 
+  geom_text(aes(label = nb_contigs), vjust = -1) + 
+  scale_y_sqrt() + 
+  theme_minimal() +
+  xlab("Number of merged k-mers per contig") +
+  ylab("Number of contigs")
+```
 
 ```{r}
 # number of contigs associated with each bioclim variables
@@ -497,12 +526,31 @@ contigs %>%
 
 ```{r}
 long_contigs <- contigs %>% 
-  filter(contig_length > 100)
+  filter(contig_length > 60)
 long_contigs$contig_id <- paste0("contig_", 1:nrow(long_contigs))
 ```
 
 
+```{r}
+fwrite(long_contigs, "./assembly/long_contigs_m15_R.txt")
+long_contigs <- fread("./assembly/long_contigs_m15_R.txt")
+```
 
+
+```{r}
+long_contigs %>% 
+  mutate(contig_length_ranges = cut(contig_length, 
+                                    c(min(long_contigs$contig_length),
+                                      seq(100, 500, 100),
+                                      545, 1000, 2000,
+                                      max(long_contigs$contig_length)),
+                                    dig.lab = 5,
+                                    include.lowest = T, right = F)) %>% 
+  group_by(contig_length_ranges) %>% 
+  summarise(mean_nb_kmers = mean(nb_merged_kmers)) %>% 
+  mutate(mean_nb_kmers = )
+  # summarise(nb_contigs = n())
+```
 
 ```{r}
 hist(contigs$nb_merged_kmers, breaks = 1000)
@@ -538,10 +586,27 @@ ggplot(long_contigs) +
   scale_y_sqrt()
 ```
 
+we keep only contigs with length > 400 or 500
+
+```{r}
+fin_contigs <- long_contigs %>% 
+  filter(contig_length >= 500)
+```
+
+```{r}
+fwrite(fin_contigs, "./assembly/long_contigs_m15_l500_R.txt")
+fin_contigs <- fread("./assembly/long_contigs_m15_l500_R.txt")
+```
+
+```{r}
+fin_contigs <- contigs %>% 
+  filter(contig_length >= 400)
+fwrite(fin_contigs, "./assembly/long_contigs_m15_l400_R.txt")
+```
 
 ### with m 21
 
-```{r}
+```{r contigs_m21}
 mergeTags21_out <- "./assembly/mergeTags_significant_kmers_lfmm_m21.tsv"
 mT_res_21 <- fread(mergeTags21_out, data.table = F)
 # unassembled_m30 <- mT_res_30 %>% 
@@ -555,14 +620,30 @@ nrow(mT_res_21) - nrow(contigs_m21)
 -> 30,645,634 unassembled kmers
 -> 22,767,142 contigs
 
-
-
 ```{r}
+fwrite(contigs_m21, "./assembly/all_contigs_m21_R.txt")
+contigs_m21 <- fread("./assembly/all_contigs_m21_R.txt")
+```
+
+
+```{r long_contigs_m21}
 long_contigs_m21 <- contigs_m21 %>% 
   filter(contig_length > 60)
+long_contigs_m21$contig_id <- paste0("contig_", 1:nrow(long_contigs_m21))
 nrow(long_contigs_m21)
 ```
 -> 964,556 contigs >= 61 bp
+
+```{r}
+fwrite(long_contigs_m21, file = "./assembly/long_contigs_m21_R.txt")
+```
+
+```{r}
+fin_contigs_m21 <- contigs_m21 %>% 
+  filter(contig_length >= 200)
+fwrite(fin_contigs_m21, "./assembly/contigs_m21_l200_R.txt")
+```
+
 
 ```{r}
 ggplot(contigs_m21) +
@@ -581,14 +662,14 @@ ggplot(contigs_m21) +
 ```
 
 
-```{r}
+```{r stats_contigs_m21}
 contigs_m21 %>% 
   filter(nb_merged_kmers > 30)
 
 sum_merged_kmers_m21 <- contigs_m21 %>% 
   mutate(nb_kmers_ranges = cut(nb_merged_kmers,
                                c(min(contigs_m21$nb_merged_kmers), 
-                                 seq(10, 150, 10), 
+                                 seq(10, 100, 10), 
                                  max(contigs_m21$nb_merged_kmers)),
                                dig.lab = 5,
                                include.lowest = T, right = F)) %>% 
@@ -597,8 +678,8 @@ sum_merged_kmers_m21 <- contigs_m21 %>%
 
 sum_ct_length_m21 <- contigs_m21 %>% 
   mutate(contig_length_ranges = cut(contig_length, 
-                                    c(min(contigs_m21$contig_length),
-                                      seq(50, 500, 50), 
+                                    c(min(contigs_m21$contig_length), 61,
+                                      seq(100, 500, 100), 
                                       max(contigs_m21$contig_length)),
                                     dig.lab = 5,
                                     include.lowest = T, right = F)) %>% 
@@ -606,13 +687,13 @@ sum_ct_length_m21 <- contigs_m21 %>%
   summarise(nb_contigs = n())
 ```
 
-```{r}
+```{r plot_stats_m21}
 ggplot(sum_merged_kmers_m21, aes(x = nb_kmers_ranges, y = nb_contigs)) + 
   geom_col() + 
   geom_text(aes(label = nb_contigs), vjust = -1) + 
   scale_y_sqrt() + 
   theme_minimal() +
-  xlab("Number of merged k-mers in contigs") +
+  xlab("Number of merged k-mers per contig") +
   ylab("Number of contigs")
 
 ggplot(sum_ct_length_m21, aes(x = contig_length_ranges, y = nb_contigs)) + 
@@ -622,7 +703,67 @@ ggplot(sum_ct_length_m21, aes(x = contig_length_ranges, y = nb_contigs)) +
   theme_minimal() +
   xlab("Contig length") +
   ylab("Number of contigs")
+
+ggplot(sum_ct_length_m21 %>% filter(contig_length_ranges != "[32,61)"), 
+       aes(x = contig_length_ranges, y = nb_contigs)) + 
+  geom_col() + 
+  geom_text(aes(label = nb_contigs), vjust = -1) + 
+  scale_y_sqrt() + 
+  theme_minimal() +
+  xlab("Contig length") +
+  ylab("Number of contigs")
+
+ggplot(sum_ct_length %>% filter(contig_length_ranges != "[32,61)"), 
+       aes(x = contig_length_ranges, y = nb_contigs)) + 
+  geom_col() + 
+  geom_text(aes(label = nb_contigs), vjust = -1) + 
+  scale_y_sqrt() + 
+  theme_minimal() +
+  xlab("Contig length") +
+  ylab("Number of contigs")
+
+rbind(sum_ct_length %>% mutate(min_overlap = 15),
+      sum_ct_length_m21 %>% mutate(min_overlap = 21)) %>% 
+  # filter(contig_length_ranges != "[32,61)") %>% 
+  ggplot(aes(x = contig_length_ranges, y = nb_contigs)) + 
+  facet_grid(cols = vars(paste("min. overlap =", min_overlap)), scale = "free_x", space = "free") +
+  geom_col() + 
+  geom_text(aes(label = nb_contigs), vjust = -1) + 
+  scale_y_sqrt() + 
+  theme_minimal() +
+  # xlab("Contig length") +
+  ylab("Number of contigs") + 
+  theme(strip.text = element_text(size = 18),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 18)) 
 ```
+
+
+### with m25 
+```{r contigs_m25}
+mergeTags25_out <- "./assembly/mergeTags_significant_kmers_lfmm_m21.tsv"
+mT_res_25 <- fread(mergeTags25_out, data.table = F)
+# unassembled_m30 <- mT_res_30 %>% 
+#   filter(nb_merged_kmers == 1)
+contigs_m25 <- mT_res_25 %>% 
+  filter(nb_merged_kmers != 1) %>% 
+  # filter(nb_merged_kmers > 61) %>% 
+  mutate(contig_length = str_count(contig))
+nrow(mT_res_25) - nrow(contigs_m25)
+```
+-> 30,645,634 unassembled kmers
+-> 22,767,142 contigs
+
+
+
+```{r long_contigs_m25}
+long_contigs_m21 <- contigs_m21 %>% 
+  filter(contig_length > 60)
+nrow(long_contigs_m21)
+```
+-> 964,556 contigs >= 61 bp
+
+
 
 ## Assembly of associated k-mers using abyss
 
@@ -636,22 +777,28 @@ writeXStringSet(kmer_set, "./assembly/significant_kmers.fasta")
 
 ## for contigs assembled by m15
 ```{r}
-long_contigs$contig_id <- paste0("contig_", 1:nrow(long_contigs))
-contigs4blast <- BStringSet(long_contigs$contig)
-names(contigs4blast) <- long_contigs$contig_id
+fin_contigs$contig_id <- paste0("contig_", 1:nrow(fin_contigs))
+contigs4blast <- BStringSet(fin_contigs$contig)
+names(contigs4blast) <- fin_contigs$contig_id
 
-writeXStringSet(contigs4blast, "./assembly/contigs_m15.fasta", format = "fasta")
+writeXStringSet(contigs4blast, "./assembly/contigs_m15_l500.fasta", format = "fasta")
+writeXStringSet(contigs4blast, "./assembly/contigs_m15_l400.fasta", format = "fasta")
 ```
 
 
 ```{r}
-blast_out <- "./assembly/all_contigs_m15_blast_result.txt"
+blast_out <- "./assembly/blast_contigs_m15_l500_results.txt"
 blast_contigs <- fread(blast_out)
-colnames(blast_contigs) <- c("contig_id", "mapped_chr", "start", "end", "mapped_start", "mapped_end", "identity", "gaps", "mismatches", "align_length")
+colnames(blast_contigs) <- c("contig_id", "mapped_seq", "start", "end", "mapped_start", "mapped_end", "bitscore", "score", "identity", "gaps", "mismatches", "align_length", "contig_length")
+
+blast_contigs %>% 
+  filter(score > 100)
+
+length(unique(blast_contigs$contig_id))
 
 blast_contigs %>% 
   # filter(evalue < 0.01) %>% 
-  arrange(desc(align_length))
+  arrange(desc(score))
 
 long_contigs %>% 
   filter(contig_id %in% blast_contigs$contig_id) %>% 
@@ -681,17 +828,287 @@ blast_contigs %>%
   filter(align_length > 100)
 ```
 
+```{r GR_blast_m15}
+blast_contigs <- blast_contigs %>% 
+  filter(!grepl("Contig", mapped_chr))
+blast_contigs <- left_join(blast_contigs, fin_contigs, by = "contig_id")
+blast_contigs <- blast_contigs %>% 
+  mutate(palign = align_length/contig_length)
 
-## for contigs assembled by m21
-```{r}
-long_contigs_m21$contig_id <- paste0("contig_", 1:nrow(long_contigs_m21))
-contigs4blast <- BStringSet(long_contigs_m21$contig)
-names(contigs4blast) <- long_contigs_m21$contig_id
+um_contigs <- fin_contigs %>% 
+  mutate(blast = if_else(contig_id %in% unique(blast_contigs$contig_id), "mapped", "unmapped"))
 
-writeXStringSet(contigs4blast, "./assembly/contigs_m21.fasta", format = "fasta")
+
+sum_um_length <- um_contigs %>% 
+  group_by(blast) %>% 
+  mutate(contig_length_ranges = cut(contig_length, 
+                                    c(min(um_contigs$contig_length),
+                                      seq(100, 500, 100),
+                                      545, 1000, 2000,
+                                      max(um_contigs$contig_length)),
+                                    dig.lab = 5,
+                                    include.lowest = T, right = F)) %>% 
+  group_by(contig_length_ranges, blast) %>% 
+  summarise(nb_contigs = n())
+
+ggplot(sum_um_length, aes(x = contig_length_ranges, y = nb_contigs)) + 
+  geom_col(aes(fill = blast),
+           position = position_dodge2(width = 1, preserve = "single", padding = 0)) + 
+  geom_text(aes(color = blast, label = nb_contigs), 
+            position = position_dodge2(width = 1, preserve = "single"), vjust = 0) + 
+  scale_y_sqrt() +
+  theme_minimal() +
+  xlab("Contig length") +
+  ylab("Number of contigs") +
+  scale_fill_manual(values = c("#b1e0f2", "gray30")) +
+  scale_color_manual(values = c("#b1e0f2", "gray30"))
+
+
 ```
 
 ```{r}
+fwrite(blast_contigs, "./assembly/blast_contigs_m15_results_R.txt")
+blast_contigs <- fread("./assembly/blast_contigs_m15_results_R.txt")
+```
+
+
+```{r}
+blast_contigs %>% 
+  distinct(align_length, contig_length) %>% 
+  ggplot() +
+  geom_point(aes(x = contig_length, y = align_length)) + 
+  xlab("Contig length") + 
+  ylab("Alignment length") + 
+  theme_minimal()
+```
+
+```{r}
+long_contigs %>% 
+  filter(!contig_id %in% unique(blast_contigs$contig_id)) %>% 
+  pull(contig_length) %>% sum()
+```
+
+
+
+## for contigs assembled by m21
+```{r fasta_contigs_m21}
+fin_contigs_m21$contig_id <- paste0("contig_", 1:nrow(fin_contigs_m21))
+contigs4blast <- BStringSet(fin_contigs_m21$contig)
+names(contigs4blast) <- fin_contigs_m21$contig_id
+
+writeXStringSet(contigs4blast, "./assembly/contigs_m21_l200.fasta", format = "fasta")
+```
+
+```{r blast_contigs_m21}
+blastm21_out <- "./assembly/contigs_m21_blast_mapped.txt"
+blast_contigsm21 <- fread(blastm21_out)
+colnames(blast_contigsm21) <- c("contig_id", "mapped_chr", "start", "end", "mapped_start", "mapped_end", "identity", "gaps", "mismatches", "align_length")
+
+sum_hits <- blast_contigsm21 %>% 
+  filter(!grepl("Contig", mapped_chr)) %>% 
+  group_by(contig_id) %>% 
+  summarise(n_hits = n())
+# hist(sum_hits)
+
+sum_hits %>% 
+  mutate(nb_hits_ranges = cut(n_hits,
+                              c(1, 2, max(sum_hits$n_hits)),
+                              dig.lab = 5,
+                              include.lowest = T, right = F)) %>% 
+  group_by(nb_hits_ranges) %>% 
+  summarise(nb_contigs = n())
+```
+-> 402,429 contigs are mapped, 395,531 contigs are mapped to chromosomes
+168,842 contigs have 1 hit
+
+```{r GR_blast_m21}
+blast_contigsm21 <- blast_contigsm21 %>% 
+  filter(!grepl("Contig", mapped_chr))
+blast_contigsm21 <- left_join(blast_contigsm21, long_contigs_m21, by = "contig_id")
+blast_contigsm21 <- blast_contigsm21 %>% 
+  mutate(palign = align_length/contig_length)
+```
+
+```{r}
+blast_contigsm21 %>% 
+  distinct(align_length, contig_length) %>% 
+  ggplot() +
+  geom_point(aes(x = contig_length, y = align_length)) + 
+  xlab("Contig length") + 
+  ylab("Alignment length") + 
+  theme_minimal()
+```
+
+
+```{r}
+fwrite(blast_contigsm21, "./assembly/blast_contigs_m21_results_R.txt")
+blast_contigsm21 <- fread("./assembly/blast_contigs_m21_results_R.txt")
+```
+
+```{r}
+blast_contigsm21 %>% 
+  filter(palign == 1) %>% 
+  group_by(contig_id) %>% 
+  summarise(nb_hits = n()) %>% 
+  filter(nb_hits == 1)
+
+nrow(long_contigs_m21) - length(unique(blast_contigsm21$contig_id))
+```
+395541 mapped, 569015 unmapped
+
+```{r}
+um_contigs_m21 <- long_contigs_m21 %>% 
+  mutate(blast = if_else(contig_id %in% unique(blast_contigsm21$contig_id), "mapped", "unmapped"))
+
+sum_um_kmers_m21 <- um_contigs_m21 %>% 
+  group_by(blast) %>% 
+  mutate(nb_kmers_ranges = cut(nb_merged_kmers,
+                               c(min(um_contigs_m21$nb_merged_kmers), 
+                                 seq(10, 150, 10), 
+                                 max(um_contigs_m21$nb_merged_kmers)),
+                               dig.lab = 5,
+                               include.lowest = T, right = F)) %>% 
+  group_by(nb_kmers_ranges, blast) %>% 
+  summarise(nb_contigs = n())
+
+sum_um_length_m21 <- um_contigs_m21 %>% 
+  group_by(blast) %>% 
+  mutate(contig_length_ranges = cut(contig_length, 
+                                    c(32, min(um_contigs_m21$contig_length), 
+                                      seq(100, 500, 100), 
+                                      max(um_contigs_m21$contig_length)),
+                                    dig.lab = 5,
+                                    include.lowest = T, right = F)) %>% 
+  group_by(contig_length_ranges, blast) %>% 
+  summarise(nb_contigs = n())
+
+ggplot(sum_um_kmers_m21, aes(x = nb_kmers_ranges, y = nb_contigs)) + 
+  geom_col() + 
+  geom_text(aes(label = nb_contigs), vjust = -1) + 
+  scale_y_sqrt() + 
+  theme_minimal() +
+  xlab("Number of merged k-mers in contig") +
+  ylab("Number of contigs")
+
+
+
+ggplot(sum_um_length_m21, aes(x = contig_length_ranges, y = nb_contigs)) + 
+  geom_col(aes(fill = blast),
+           position = position_dodge2(width = 1, preserve = "single", padding = 0)) + 
+  geom_text(aes(color = blast, label = nb_contigs), 
+            position = position_dodge2(width = 1, preserve = "single"), vjust = 0) + 
+  scale_y_sqrt() +
+  theme_minimal() +
+  xlab("Contig length") +
+  ylab("Number of contigs") +
+  scale_fill_manual(values = c("#2f7296", "gray40")) +
+  scale_color_manual(values = c("#2f7296", "gray40"))
+```
+
+```{r}
+long_contigs_m21 %>% 
+  filter(!contig_id %in% unique(blast_contigsm21$contig_id)) %>% 
+  pull(contig_length) %>% sum
+```
+-> 46,282,945 nt unmapped
+
+```{r GR_blast_m21}
+blast_contigsm21 <- blast_contigsm21 %>% 
+  # rowwise() %>% 
+  mutate(strand = if_else(mapped_start < mapped_end, "+", "-"),
+         mapped_start_cr = if_else(mapped_start < mapped_end, mapped_start, mapped_end),
+         mapped_end_cr = if_else(mapped_start < mapped_end, mapped_end, mapped_start))
+  
+
+blast_c
+
+contigm21_GR <- GRanges(seqnames = blast_contigsm21$mapped_chr,
+                        ranges = IRanges(start = blast_contigsm21$mapped_start_cr,
+                                         end = blast_contigsm21$mapped_end_cr),
+                        strand = blast_contigsm21$strand)
+
+
+```
+
+```{r plot_cov_m21}
+bam_m21 <- "./assembly/contigs_m21_blast_mapped.bam"
+
+genome_fa <- "/shared/projects/vietcaf/data/reference/CC1.8_v2_pseudomolecule_cat.fa"
+genome <- scanFa(genome_fa)
+genome <- genome[grepl("Chr", names(genome))] # remove contigs
+names(genome) <- gsub(" .+", "", names(genome))
+# names(genome) <- gsub("CC1.8.Chr", "Chr ", names(genome))
+genome_GR <- GRanges(seqnames = names(genome), ranges = IRanges(start = 1, end = width(genome)))
+
+gkp <- plotKaryotype(genome = genome_GR, plot.type = 6) 
+kpPlotCoverage(gkp, data=contigm21_GR)
+
+# gkp <- kpPlotBAMDensity(gkp, data=bam_m21)
+```
+
+```{r}
+blast_contigsm21 %>% 
+  mutate(mapped_start = 1:length(identity))
+ggplot(blast_contigsm21) + 
+  facet_grid(rows = vars(mapped_chr), scales = "free") +
+  geom_segment(aes(x = mapped_start, xend = mapped_end, y = 0, yend = 1), position = position_stack())
+```
+
+
+## annotate contigs > 500 nt (m15)
+
+
+```{r}
+blast_nr <- fread("./annotation/contigs_m15_l500_blastx.tsv")
+colnames(blast_nr) <- c("contig_id", "qgi", "start", "end", "sacc", "sgi", "sstart", "send", "bitscore", "score", "evalue", "pident", "gaps", "mismatch", "align_length", "qlen", "staxid", "ssciname", "sblastname", "stitle")
+blast_nt_filt <- blast_nr %>% 
+  filter(evalue < 1e5, grepl("PREDICTED", title),
+         align_length > 100) 
+blast_nr %>% 
+  filter(align_length > 100, ssciname %in% c("Coffea arabica", "Coffea canephora", "Coffea eugenioides")) %>% 
+  pull(ssciname) %>% unique() %>% sort()
+
+blast_nr %>% 
+  filter(bitscore > 100)
+```
+
+
+
+
+
+remove duplicated sequences in gff file
+```{r}
+annot <- import.gff3("./annotation/CC1.8_v2_named_annotation_0.5_BTI.gff3")
+uni_annot <- annot[!IRanges::duplicated(annot)]
+uni_annot <- uni_annot[uni_annot$type == "gene"]
+export.gff3(uni_annot, "./annotation/CC1.8_v2_named_annotation_0.5_BTI_unique.gff3")
+```
+-> 28880 unique sequences
+
+
+```{r}
+library(XML)
+f <- "./annotation/contigs_m15_l500_blastx.tsv"
+doc1 <- xmlParse(f)
+
+xml_list <- list.files("./annotation", "contig_\\d+_blastx_besthit.xml", full.names = T)
+
+contigs_blastx <- lapply(str_sort(xml_list, numeric = T), function(f) {
+  print(f)
+  doc1 <- xmlParse(f)
+  hsps <- xmlToDataFrame(xmlChildren(xmlRoot(doc1)[["BlastOutput2"]][["report"]][["Report"]][["results"]][["Results"]][["search"]][["Search"]][["hits"]][["Hit"]][["hsps"]]))
+  query <- xmlToDataFrame(xmlChildren(xmlRoot(doc1)[["BlastOutput2"]][["report"]][["Report"]][["results"]][["Results"]][["search"]]))[,1:3]
+  subj <- xmlToDataFrame(xmlChildren(xmlRoot(doc1)[["BlastOutput2"]][["report"]][["Report"]][["results"]][["Results"]][["search"]][["Search"]][["hits"]][["Hit"]][["description"]]))[1,]
+  cbind(query, hsps, subj)
+})
+
+
+xml_remove(xmlChildren(xmlRoot(doc1)[["BlastOutput2"]][["report"]][["Report"]][["results"]][["Results"]][["search"]][["Search"]][["hits"]][["Hit"]][["hsps"]])[1])
+```
+
+```{r}
+contig_genes <- fread("./annotation/blastn_contigs_m15_l400_CC1.8_v2_results.txt")
+colnames(contig_genes) <- c("contig_id", "start", "end", "contig_length", "align_length", "sacc", "sstart", "send", "bitscore", "score", "evalue", "pident", "gaps", "mismatch")
 
 ```
 

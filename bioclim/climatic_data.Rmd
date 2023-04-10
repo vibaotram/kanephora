@@ -178,3 +178,62 @@ occ_file <- "occ_coffee_vnm.csv"
 occurence <- read.csv(occ_file)
 ```
 get bioclim variables for the occurence with the script `download_bioclim_chelsa_VN.R` 
+
+
+## future data
+
+- download data in 2050 (CMIP5), model BCC-CSM2-MR, pathway ssp585, resolution 30s
+
+```{bash}
+wget https://geodata.ucdavis.edu/cmip6/5m/BCC-CSM2-MR/ssp585/wc2.1_5m_bioc_BCC-CSM2-MR_ssp585_2041-2060.tif
+```
+
+```{r}
+download.file("https://biogeo.ucdavis.edu/data/climate/cmip5/30s/bc85bi50.zip", 
+              destfile = "bc85bi50.zip",
+              method = "curl")
+```
+FAILED
+
+- download data in period 2041-2060 (CMIP6), model BCC-CSM2-MR, pathway ssp585, resolution 30s
+
+```{bash}
+wget https://geodata.ucdavis.edu/cmip6/5m/MIROC6/ssp585/wc2.1_5m_bioc_MIROC6_ssp585_2041-2060.tif
+```
+
+```{r}
+library(geodata)
+cmip6_tile(lon = occurence$Lon[1],
+           lat = occurence$Lat[1],
+           model = "BCC-CSM2-MR",
+           ssp = "585",
+           time = "2041-2060",
+           var = "bioc",
+           res = 2.5,
+           path = tempdir())
+
+raster::getData('CMIP5', var='tmin', res=10, rcp=85, model='AC', year=70) 
+```
+
+FAILED
+
+- download data in period 2041-2070 (CMIP6), model IPSL-CM6A-LR, pathway ssp585, resolution 30s
+
+from CHELSA
+```{bash}
+cd /shared/projects/most_kmer/afterkiss/bioclim
+wget --no-host-directories --input-file=envidatS3paths_future_ipsl.txt
+```
+
+from worldclim
+```{bash}
+wget --no-check-certificate https://geodata.ucdavis.edu/cmip6/30s/IPSL-CM6A-LR/ssp585/wc2.1_30s_bioc_IPSL-CM6A-LR_ssp585_2041-2060.tif
+```
+
+
+- download data in period 2041-2070 (CMIP6), model GFDL-ESM4, pathway ssp585, resolution 30s
+
+```{bash}
+wget --no-host-directories --input-file=envidatS3paths_future_gfdl.txt
+```
+

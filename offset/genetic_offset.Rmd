@@ -9,15 +9,17 @@ library(tidyverse)
 library(tibble)
 library(ggplot2)
 library(sf)
+library(raster)
 library(rnaturalearth)
 library(rnaturalearthdata)
 library(ggfortify)
 library(viridis)
+library(data.table)
 ```
 
 ```{r}
-group_col <- c("#30123BFF", "#28BBECFF", "#A2FC3CFF", "#FB8022FF", "#7A0403FF", "gray", "black")
-names(group_col) <- c("ER", "OB", "C", "AG", "D", "admixed", "Vietnam")
+group_col <- c("#30123BFF", "#28BBECFF", "#A2FC3CFF", "#FB8022FF", "#7A0403FF", "gray", "black", "gray30")
+names(group_col) <- c("ER", "OB", "C", "AG", "D", "admixed", "Vietnam", "Vietnam 2041-2070")
 ```
 
 ## Occurrences in the central highlands
@@ -39,17 +41,20 @@ show the occurrences on maps
 ```{r}
 vn <- getData("GADM", country = "VN", level = 1)
 vn_pol <- st_as_sf(vn)
+vn_pol <- vn_pol[vn_pol$NAME_1 %in% rob_ch_clim$province,]
 
 district <- getData("GADM", country = "VN", level = 2)
 dt_pol <- st_as_sf(district)
+dt_pol <- dt_pol[dt_pol$NAME_1 %in% rob_ch_clim$province,]
+
 ggplot() +
-  geom_sf(data = dt_pol, fill = "white", color = "#c2d4f0", size = 0.3) +
-  geom_sf(data = vn_pol, fill = NA, color = "#8bb0e8") + 
+  geom_sf(data = dt_pol, fill = "white", color = "#77a37b", size = 0.3) +
+  geom_sf(data = vn_pol, fill = NA, color = "#255429") + 
   geom_point(data = rob_ch_clim, 
              aes(x = Long, y = Lat, shape = province), 
              color = "black") +
   theme_void() + 
-  ylim(c(11, 16)) + xlim(c(106, 110)) +
+  # ylim(c(11, 16)) + xlim(c(106, 110)) +
   scale_shape_manual(values = c(0:3, 8, 10))
 ```
 
@@ -72,8 +77,8 @@ af_clim <- af_clim %>%
 ```
 
 ```{r}
-rbind(af_clim %>% select(1:19, group),
-      rob_ch_clim %>% select(1:19, group)) %>% 
+rbind(af_clim %>% dplyr::select(1:19, group),
+      rob_ch_clim %>% dplyr::select(1:19, group)) %>% 
   rownames_to_column("id") %>% 
   pivot_longer(cols = 2:20, names_to = "variable") %>% 
   mutate(variable = factor(variable, levels = str_sort(unique(variable), numeric = T))) %>% 
@@ -106,8 +111,8 @@ autoplot(afclim_pca, x = 1, y = 2,
 
 
 ```{r}
-all_clim <- rbind(af_clim %>% select(1:20, group) %>% mutate(province = "Africa"),
-                  rob_ch_clim %>% select(1:20, group, province))
+all_clim <- rbind(af_clim %>% dplyr::select(1:20, group) %>% mutate(province = "Africa"),
+                  rob_ch_clim %>% dplyr::select(1:20, group, province))
 
 vnclim_sc <- scale(rob_ch_clim[,1:19], center = afclim_pca$center)
 vnclim_pd <- vnclim_sc %*% afclim_pca$rotation
@@ -121,18 +126,13 @@ autoplot(climproj, x = 1, y = 2,
          loadings.label.repel = T,
          loadings.label.colour = "blue", frame = T) +
   theme_minimal() + 
-  scale_colour_manual(values = group_col[-6]) +
-  scale_fill_manual(values = group_col[-6]) +
+  scale_colour_manual(values = group_col[-c(6, 8)]) +
+  scale_fill_manual(values = group_col[-c(6, 8)]) +
   scale_shape_manual(values = c(16, 0:3, 8, 10), name = "location")
 ```
 
-```{r}
-allclim_pca <- prcomp(af_clim[,1:19], scale. = T, newdata = rob_ch_clim[,1:19])
-```
 
-
-
-## Climate distance
+## Climate distance in present
 
 ```{r}
 euclidist <- function(x) {
@@ -148,7 +148,7 @@ central point of each district to central point of African group
 ```{r}
 mean_district <- vnclim_pd %>% 
   as.data.frame() %>% 
-  select(PC1:PC5) %>% 
+  dplyr::select(PC1:PC5) %>% 
   rownames_to_column("id") %>% 
   mutate(district = rob_ch_clim$district,
          province = rob_ch_clim$province) %>% 
@@ -158,7 +158,7 @@ mean_district <- vnclim_pd %>%
 
 group_mean <- afclim_pca$x %>% 
   as.data.frame() %>% 
-  select(PC1:PC5) %>% 
+  dplyr::select(PC1:PC5) %>% 
   rownames_to_column("id") %>% 
   mutate(group = af_clim$group) %>% 
   pivot_longer(cols = PC1:PC5, names_to = "PC") %>% 
@@ -186,8 +186,9 @@ ggplot(occ_group_dist) +
 ```
 
 
-
+## correlation between yield and climate distance in present
 ```{r}
+yield <- read.delim("../bioclim/yield_by_district.tsv")
 dist_yield <- inner_join(occ_group_dist, yield, by = c("district", "province"))
 ggplot(dist_yield) + 
   facet_grid(cols = vars(province), scales = "free", space = "free") + 
@@ -203,19 +204,174 @@ ggplot(dist_yield) +
 
 
 ```{r}
-ggplot(dist_yield %>% filter(!province %in% c("Bình Phước")), aes(x = euclidean_distance, y = yield, color = group)) + 
+ggplot(dist_yield, aes(x = euclidean_distance, y = yield, color = group)) + 
   facet_grid(cols = vars(group), scales = "free") +
   geom_point() +
   geom_smooth(method = 'lm', formula = y~x) + 
   theme_minimal() +
   scale_color_manual(values = group_col[1:5])
 dist_yield %>% 
-  filter(!province %in% c("Bình Phước")) %>% 
+  # filter(!province %in% c("Bình Phước")) %>% 
   group_by(group) %>% 
-  dplyr::summarise(cor(euclidean_distance, yield))
+  dplyr::summarise(cor = cor.test(euclidean_distance, yield)$estimate,
+                   pvalue = cor.test(euclidean_distance, yield)$p.value)
 ```
 
 
-**TODO:**
-- point shape for province
-- correlation for all the groups
+## Predict future yield
+
+Future bioclim data: CMIP6, period 2041-2070, model IPSL-CM6A-LR, pathway ssp585, resolution 30s
+
+```{r}
+bc_future_vn <- read.csv("../bioclim/climatic_variables_vn_future_gfdl.csv")
+colnames(bc_future_vn) <- gsub("bio", "bio_", colnames(bc_future_vn))
+colnames(bc_future_vn) <- gsub("_2041.2070_gfdl.esm4_ssp585_V.2.1", "", colnames(bc_future_vn))
+bc_future_vn <- bc_future_vn %>% 
+  column_to_rownames("Label") %>% 
+  filter(!province %in% c("Lâm Đồng", "Bình Định", "Bình Phước", "Khánh Hòa")) %>% 
+  rename(group = snp_group) %>% 
+  select(starts_with("bio"), group, province, district) %>% 
+  mutate(bio_3 = bio_3*100)
+```
+
+```{r}
+prs_fut_clim <- bind_rows(all_clim,
+                          bc_future_vn %>% mutate(group = "Vietnam 2041-2070"))
+
+futclim_sc <- scale(prs_fut_clim %>% 
+                      filter(group == "Vietnam 2041-2070") %>% 
+                      select(1:19), 
+                    center = afclim_pca$center)
+futclim_pd <- futclim_sc %*% afclim_pca$rotation
+
+futclimproj <- climproj
+futclimproj$x <- rbind(futclimproj$x, futclim_pd)
+autoplot(futclimproj, x = 1, y = 2,
+         data = prs_fut_clim, 
+         colour = 'group', size = 2, shape = 'province',
+         loadings = TRUE, loadings.colour = 'blue',
+         loadings.label = TRUE, loadings.label.size = 6,
+         loadings.label.repel = T,
+         loadings.label.colour = "blue", frame = T) +
+  theme_minimal() + 
+  scale_colour_manual(values = group_col[-6]) +
+  scale_fill_manual(values = group_col[-6]) +
+  scale_shape_manual(values = c(16, 0:3, 8, 10), name = "location")
+
+
+
+futclimproj <- afclim_pca
+futclimproj$x <- rbind(futclimproj$x, futclim_pd)
+autoplot(futclimproj, x = 1, y = 2,
+         data = prs_fut_clim %>% filter(group != "Vietnam"), 
+         colour = 'group', size = 2, shape = 'province',
+         loadings = TRUE, loadings.colour = 'blue',
+         loadings.label = TRUE, loadings.label.size = 6,
+         loadings.label.repel = T,
+         loadings.label.colour = "blue", frame = T) +
+  theme_minimal() + 
+  scale_colour_manual(values = group_col[-c(6, 7)]) +
+  scale_fill_manual(values = group_col[-c(6, 7)]) +
+  scale_shape_manual(values = c(16, 0:3, 8, 10), name = "location")
+```
+
+
+Future climate distance
+
+```{r}
+mean_district_fut <- futclim_pd %>% 
+  as.data.frame() %>% 
+  dplyr::select(PC1:PC5) %>% 
+  rownames_to_column("id") %>% 
+  mutate(district = bc_future_vn$district,
+         province = bc_future_vn$province) %>% 
+  pivot_longer(cols = PC1:PC5, names_to = "PC") %>% 
+  group_by(district, province, PC) %>% 
+  dplyr::summarise(mean_occ = mean(value), .groups = "drop")
+
+fut_group_dist <- full_join(mean_district_fut, 
+                            group_mean %>% filter(group == "ER"), 
+                            by = "PC") %>% 
+  # filter(PC %in% c("PC1", "PC2")) %>% 
+  mutate(distance = mean_occ - mean_group) %>% 
+  group_by(district, province, group) %>% 
+  dplyr::summarise(euclidean_distance = euclidist(distance), .groups = "drop") %>% 
+  arrange(province, district) %>% 
+  mutate(district = factor(district, levels = unique(district))) %>% 
+  filter(district %in% yield$district)
+
+distER_yield <- dist_yield %>% filter(group == "ER")
+yd_rel <- lm(yield ~ euclidean_distance, data = distER_yield)
+
+pred_yield <- predict.lm(yd_rel, fut_group_dist %>% select(euclidean_distance),
+                                   interval = "confidence")
+fut_group_dist <- cbind(fut_group_dist, pred_yield)
+
+left_join(distER_yield %>% 
+            rename(present_yield = yield,
+                   present_clim_dist = euclidean_distance),
+      fut_group_dist %>% 
+        rename(future_yield = fit,
+               future_clim_dist = euclidean_distance),
+      by = c("district", "province", "group")) %>% 
+  mutate(clim_change = (future_clim_dist - present_clim_dist)/present_clim_dist,
+         yield_change = (future_yield - present_yield)/present_yield,
+         yield_change_lwr = (lwr - present_yield)/present_yield,
+         yield_change_upr = (upr - present_yield)/present_yield) %>% 
+  arrange(yield_change) %>%
+  mutate(district = factor(district, levels = district)) %>% 
+  ggplot(aes(x = district, y = yield_change)) + 
+  geom_col(width = 0.6, fill = "gray") + 
+  geom_errorbar(aes(ymin = yield_change_lwr, ymax = yield_change_upr), width = 0.3) +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 90)) + 
+  xlab("District") +
+  ylab("Change in yield") 
+```
+
+
+## Presence/absence of the significant k-mers
+
+```{r}
+signif_kmers <- fread("../gea/assembly/significant_kmers_lfmm.tsv", select = c(1,5:23))
+
+signif_kmers <- signif_kmers %>% 
+  filter(if_any(bio_1:bio_19))
+
+fwrite(signif_kmers %>% select(sequence), "significant_kmers_bio.txt", row.names = F, col.names = F, quote = F)
+```
+
+103,800,835 kmers associated with (only) 19 bioclim vars
+
+```{bash}
+module load singularity 
+
+singularity shell -B /shared/projects/most_kmer /shared/projects/most_kmer/KIsS/kiss/containers/Singularity.kiss_tools.sif
+
+cd /shared/projects/most_kmer/afterkiss/offset
+filter_kmers -t /shared/projects/most_kmer/kiss_all/output/2.KMERS_TABLE/kmers_table \
+-k significant_kmers_bio.txt \
+-o signif_kmer_table.txt
+```
+
+```
+For the question about how to know if significant kmers found in Africa are present or not in vietnam accessions, i think you can:
+Obtain the kmers table using reads from vietnan samples by using kiss
+Filter these table using the "african significant kmers" using filter_kmers. Filter_kmers is a script you can found in https://github.com/voichek/kmersGWAS ...  you can also use kiss singularity
+ filter_kmers -t kmers_table_vietnan -k outliers_african.list -o filter_table
+Analyse the filter_table by pandas...
+```
+```{r}
+kmer_inds <- colnames(fread("./signif_kmer_table.txt", nrows = 0))
+kmer_vn_table <- fread("./signif_kmer_table.txt", 
+                       select = grep("S-", kmer_inds)[1])
+kmer_vn_count <- colSums(kmer_vn_table)
+
+
+af_samples <- fread("../bioclim/climatic_coordinates.csv", select = c("Label", "snp_group"))
+er_inds <- af_samples$Label[af_samples$snp_group == "ER"]
+kmer_er_table <- fread("./signif_kmer_table.txt", 
+                       select = which(kmer_inds %in% er_inds))
+```
+
+kmer count in VN inds: 17,211,265 - 22,921,729

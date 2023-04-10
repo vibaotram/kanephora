@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name download_bioclim_vn
+#SBATCH --job-name download_bioclim_vn_future
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=20G
 #SBATCH --partition=long
@@ -10,4 +10,4 @@
 module unload r
 module load r/4.1.0
 
-Rscript /shared/projects/most_kmer/afterkiss/bioclim/download_bioclim_WC_VN.R
+Rscript /shared/projects/most_kmer/afterkiss/bioclim/download_bioclim_chelsa_VN.R
