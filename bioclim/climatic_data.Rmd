@@ -228,6 +228,8 @@ wget --no-host-directories --input-file=envidatS3paths_future_ipsl.txt
 from worldclim
 ```{bash}
 wget --no-check-certificate https://geodata.ucdavis.edu/cmip6/30s/IPSL-CM6A-LR/ssp585/wc2.1_30s_bioc_IPSL-CM6A-LR_ssp585_2041-2060.tif
+
+wget --no-check-certificate https://geodata.ucdavis.edu/cmip6/30s/MIROC6/ssp585/wc2.1_30s_bioc_MIROC6_ssp585_2041-2060.tif
 ```
 
 

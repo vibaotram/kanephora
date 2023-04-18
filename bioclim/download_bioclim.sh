@@ -8,6 +8,6 @@
 #SBATCH --output /shared/projects/most_kmer/afterkiss/bioclim/slurm-%x.log
 
 module unload r
-module load r/4.1.0
+module load r/4.1.1
 
-Rscript /shared/projects/most_kmer/afterkiss/bioclim/download_bioclim_chelsa_VN.R
+Rscript /shared/ifbstor1/projects/most_kmer/afterkiss/bioclim/download_bioclim_WC_VN_future_miroc6.R

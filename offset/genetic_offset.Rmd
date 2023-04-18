@@ -15,11 +15,16 @@ library(rnaturalearthdata)
 library(ggfortify)
 library(viridis)
 library(data.table)
+library(superheat)
+library(cowplot)
 ```
 
 ```{r}
-group_col <- c("#30123BFF", "#28BBECFF", "#A2FC3CFF", "#FB8022FF", "#7A0403FF", "gray", "black", "gray30")
+group_col <- c("#30123BFF", "#28BBECFF", "#A2FC3CFF", "#FB8022FF", "#7A0403FF", "gray", "gray", "gray40")
 names(group_col) <- c("ER", "OB", "C", "AG", "D", "admixed", "Vietnam", "Vietnam 2041-2070")
+
+group_col_af <- c("#30123BFF", "#28BBECFF", "#A2FC3CFF", "#FB8022FF", "#7A0403FF", "gray")
+names(group_col_af) <- c("ER", "OB", "C", "AG", "D", "hybrid")
 ```
 
 ## Occurrences in the central highlands
@@ -53,6 +58,18 @@ ggplot() +
   geom_point(data = rob_ch_clim, 
              aes(x = Long, y = Lat, shape = province), 
              color = "black") +
+  theme_void() + 
+  # ylim(c(11, 16)) + xlim(c(106, 110)) +
+  scale_shape_manual(values = c(0:3, 8, 10))
+```
+
+```{r}
+ggplot() +
+  geom_sf(data = dt_pol, fill = "white", color = "#77a37b", size = 0.3) +
+  geom_sf(data = vn_pol, fill = NA, color = "#255429") + 
+  geom_point(data = rob_ch_clim, 
+             aes(x = Long, y = Lat), 
+             color = "gray40") +
   theme_void() + 
   # ylim(c(11, 16)) + xlim(c(106, 110)) +
   scale_shape_manual(values = c(0:3, 8, 10))
@@ -111,20 +128,46 @@ autoplot(afclim_pca, x = 1, y = 2,
 
 
 ```{r}
-all_clim <- rbind(af_clim %>% dplyr::select(1:20, group) %>% mutate(province = "Africa"),
-                  rob_ch_clim %>% dplyr::select(1:20, group, province))
+all_clim <- bind_rows(af_clim %>% dplyr::select(1:20, group) %>% mutate(province = "Africa"),
+                  rob_ch_clim %>% dplyr::select(1:20, group, province, district))
 
 vnclim_sc <- scale(rob_ch_clim[,1:19], center = afclim_pca$center)
 vnclim_pd <- vnclim_sc %*% afclim_pca$rotation
 
 climproj <- afclim_pca
 climproj$x <- rbind(climproj$x, vnclim_pd)
+climproj_mp <- cbind(climproj$x,
+                    all_clim %>% 
+                      # filter(group != "Vietnam") %>% 
+                      select(province, district, group)) %>%
+  mutate(district = if_else(is.na(district), group, district)) %>% 
+  group_by(district, group) %>% 
+  summarise(across(PC1:PC19, mean))
 autoplot(climproj, x = 1, y = 2,
-         data = all_clim, colour = 'group', size = 2, shape = 'province',
+         data = all_clim, colour = 'group', size = 2, 
+         shape = 1,
+         # shape = 'province',
          loadings = TRUE, loadings.colour = 'blue',
          loadings.label = TRUE, loadings.label.size = 6,
          loadings.label.repel = T,
          loadings.label.colour = "blue", frame = T) +
+  theme_minimal() + 
+  scale_colour_manual(values = group_col[-c(6, 8)]) +
+  scale_fill_manual(values = group_col[-c(6, 8)]) +
+  scale_shape_manual(values = c(16, 0:3, 8, 10), name = "location")
+
+autoplot(climproj, x = 1, y = 2,
+         data = all_clim, colour = 'group', size = 2, 
+         alpha = 0, 
+         # shape = 1,
+         loadings = TRUE, loadings.colour = NA,
+         loadings.label = TRUE, loadings.label.size = 6,
+         loadings.label.repel = T,
+         loadings.label.colour = NA, frame = T) +
+  geom_point(data = climproj_mp, 
+             aes(x = PC1 / (climproj$sdev[1] * sqrt(nrow(climproj$x))), 
+                 y = PC2 / (climproj$sdev[2] * sqrt(nrow(climproj$x))), 
+                 color = group), size = 5) +
   theme_minimal() + 
   scale_colour_manual(values = group_col[-c(6, 8)]) +
   scale_fill_manual(values = group_col[-c(6, 8)]) +
@@ -204,6 +247,7 @@ ggplot(dist_yield) +
 
 
 ```{r}
+# correlation between yield and climate for all groups
 ggplot(dist_yield, aes(x = euclidean_distance, y = yield, color = group)) + 
   facet_grid(cols = vars(group), scales = "free") +
   geom_point() +
@@ -215,6 +259,15 @@ dist_yield %>%
   group_by(group) %>% 
   dplyr::summarise(cor = cor.test(euclidean_distance, yield)$estimate,
                    pvalue = cor.test(euclidean_distance, yield)$p.value)
+
+# group ER only
+ggplot(dist_yield %>% filter(group == "ER"), 
+       aes(x = euclidean_distance, y = yield)) + 
+  geom_point(color = group_col["ER"]) +
+  geom_smooth(method = 'lm', formula = y~x, color = group_col["ER"]) + 
+  theme_minimal() +
+  ylab("Yield") +
+  xlab("Climate distance")
 ```
 
 
@@ -223,15 +276,15 @@ dist_yield %>%
 Future bioclim data: CMIP6, period 2041-2070, model IPSL-CM6A-LR, pathway ssp585, resolution 30s
 
 ```{r}
-bc_future_vn <- read.csv("../bioclim/climatic_variables_vn_future_gfdl.csv")
-colnames(bc_future_vn) <- gsub("bio", "bio_", colnames(bc_future_vn))
-colnames(bc_future_vn) <- gsub("_2041.2070_gfdl.esm4_ssp585_V.2.1", "", colnames(bc_future_vn))
+bc_future_vn <- read.csv("../bioclim/climatic_variables_vn_wc2.1_MIROC6_ssp585_2041-2060.csv")
+# colnames(bc_future_vn) <- gsub("bio", "bio_", colnames(bc_future_vn))
+# colnames(bc_future_vn) <- gsub("_2041.2070_gfdl.esm4_ssp585_V.2.1", "", colnames(bc_future_vn))
 bc_future_vn <- bc_future_vn %>% 
   column_to_rownames("Label") %>% 
   filter(!province %in% c("Lâm Đồng", "Bình Định", "Bình Phước", "Khánh Hòa")) %>% 
   rename(group = snp_group) %>% 
-  select(starts_with("bio"), group, province, district) %>% 
-  mutate(bio_3 = bio_3*100)
+  select(starts_with("bio"), group, province, district) # %>% 
+  # mutate(bio_3 = bio_3*100)
 ```
 
 ```{r}
@@ -244,27 +297,37 @@ futclim_sc <- scale(prs_fut_clim %>%
                     center = afclim_pca$center)
 futclim_pd <- futclim_sc %*% afclim_pca$rotation
 
-futclimproj <- climproj
-futclimproj$x <- rbind(futclimproj$x, futclim_pd)
-autoplot(futclimproj, x = 1, y = 2,
-         data = prs_fut_clim, 
-         colour = 'group', size = 2, shape = 'province',
-         loadings = TRUE, loadings.colour = 'blue',
-         loadings.label = TRUE, loadings.label.size = 6,
-         loadings.label.repel = T,
-         loadings.label.colour = "blue", frame = T) +
-  theme_minimal() + 
-  scale_colour_manual(values = group_col[-6]) +
-  scale_fill_manual(values = group_col[-6]) +
-  scale_shape_manual(values = c(16, 0:3, 8, 10), name = "location")
+# futclimproj <- climproj
+# futclimproj$x <- rbind(futclimproj$x, futclim_pd)
+# autoplot(futclimproj, x = 1, y = 2,
+#          data = prs_fut_clim, 
+#          colour = 'group', size = 2, 
+#          # shape = 'province',
+#          loadings = TRUE, loadings.colour = 'blue',
+#          loadings.label = TRUE, loadings.label.size = 6,
+#          loadings.label.repel = T,
+#          loadings.label.colour = "blue", frame = T) +
+#   theme_minimal() + 
+#   scale_colour_manual(values = group_col[-6]) +
+#   scale_fill_manual(values = group_col[-6]) +
+#   scale_shape_manual(values = c(16, 0:3, 8, 10), name = "location")
 
 
 
 futclimproj <- afclim_pca
 futclimproj$x <- rbind(futclimproj$x, futclim_pd)
+mid_points <- cbind(futclimproj$x,
+                    prs_fut_clim %>% 
+                      filter(group != "Vietnam") %>% 
+                      select(province, district, group)) %>%
+  mutate(district = if_else(is.na(district), group, district)) %>% 
+  group_by(district, group) %>% 
+  summarise(across(PC1:PC19, mean))
 autoplot(futclimproj, x = 1, y = 2,
          data = prs_fut_clim %>% filter(group != "Vietnam"), 
-         colour = 'group', size = 2, shape = 'province',
+         colour = 'group', size = 2,  
+         shape = 1,
+         # shape = 'province', 
          loadings = TRUE, loadings.colour = 'blue',
          loadings.label = TRUE, loadings.label.size = 6,
          loadings.label.repel = T,
@@ -273,10 +336,34 @@ autoplot(futclimproj, x = 1, y = 2,
   scale_colour_manual(values = group_col[-c(6, 7)]) +
   scale_fill_manual(values = group_col[-c(6, 7)]) +
   scale_shape_manual(values = c(16, 0:3, 8, 10), name = "location")
+
+autoplot(futclimproj, x = 1, y = 2,
+         data = prs_fut_clim %>% filter(group != "Vietnam"), 
+         colour = 'group', size = 2, alpha = 0, 
+         # shape = 'province', 
+         loadings = TRUE, loadings.colour = NA,
+         loadings.label = TRUE, loadings.label.size = 6,
+         loadings.label.repel = T,
+         loadings.label.colour = NA, frame = T) +
+  geom_point(data = mid_points, 
+             aes(x = PC1 / (futclimproj$sdev[1] * sqrt(nrow(futclimproj$x))), 
+                 y = PC2 / (futclimproj$sdev[2] * sqrt(nrow(futclimproj$x))), 
+                 color = group), size = 5) +
+  theme_minimal() + 
+  scale_colour_manual(values = group_col[-c(6, 7)]) +
+  scale_fill_manual(values = group_col[-c(6, 7)]) +
+  scale_shape_manual(values = c(16, 0:3, 8, 10), name = "location")
+
+
+ggplot(data = mid_points) +
+  geom_point(aes(x = PC1 / (futclimproj$sdev[1] * sqrt(nrow(futclimproj$x))), 
+                 y = PC2 / (futclimproj$sdev[2] * sqrt(nrow(futclimproj$x))),
+                 color = group), size = 5) +
+  scale_color_manual(values = group_col[-c(6, 7)])
 ```
 
 
-Future climate distance
+Predict future yield
 
 ```{r}
 mean_district_fut <- futclim_pd %>% 
@@ -289,7 +376,7 @@ mean_district_fut <- futclim_pd %>%
   group_by(district, province, PC) %>% 
   dplyr::summarise(mean_occ = mean(value), .groups = "drop")
 
-fut_group_dist <- full_join(mean_district_fut, 
+fut_ER_dist <- full_join(mean_district_fut, 
                             group_mean %>% filter(group == "ER"), 
                             by = "PC") %>% 
   # filter(PC %in% c("PC1", "PC2")) %>% 
@@ -303,31 +390,57 @@ fut_group_dist <- full_join(mean_district_fut,
 distER_yield <- dist_yield %>% filter(group == "ER")
 yd_rel <- lm(yield ~ euclidean_distance, data = distER_yield)
 
-pred_yield <- predict.lm(yd_rel, fut_group_dist %>% select(euclidean_distance),
+pred_yield <- predict.lm(yd_rel, fut_ER_dist %>% select(euclidean_distance),
                                    interval = "confidence")
-fut_group_dist <- cbind(fut_group_dist, pred_yield)
+fut_ER_dist <- cbind(fut_ER_dist, pred_yield)
 
 left_join(distER_yield %>% 
             rename(present_yield = yield,
                    present_clim_dist = euclidean_distance),
-      fut_group_dist %>% 
+      fut_ER_dist %>% 
         rename(future_yield = fit,
                future_clim_dist = euclidean_distance),
       by = c("district", "province", "group")) %>% 
-  mutate(clim_change = (future_clim_dist - present_clim_dist)/present_clim_dist,
-         yield_change = (future_yield - present_yield)/present_yield,
-         yield_change_lwr = (lwr - present_yield)/present_yield,
-         yield_change_upr = (upr - present_yield)/present_yield) %>% 
+  mutate(clim_change = (future_clim_dist - present_clim_dist)/present_clim_dist*100,
+         yield_change = (future_yield - present_yield)/present_yield*100,
+         yield_change_lwr = (lwr - present_yield)/present_yield*100,
+         yield_change_upr = (upr - present_yield)/present_yield*100) %>% 
+  mutate(change = if_else(yield_change < 0, "decrease", "increase")) %>% 
   arrange(yield_change) %>%
   mutate(district = factor(district, levels = district)) %>% 
   ggplot(aes(x = district, y = yield_change)) + 
-  geom_col(width = 0.6, fill = "gray") + 
+  geom_col(aes(fill = change), width = 0.6, show.legend = F) + 
   geom_errorbar(aes(ymin = yield_change_lwr, ymax = yield_change_upr), width = 0.3) +
   theme_minimal() + 
-  theme(axis.text.x = element_text(angle = 90)) + 
+  theme(axis.text.x = element_blank()) + 
   xlab("District") +
-  ylab("Change in yield") 
+  ylab("Change in yield (%)") +
+  # scale_y_continuous(breaks = seq(-20, 100, 20)) +
+  scale_fill_manual(values = c("#eb5752", "#7eb2f2")) 
 ```
+
+
+```{r}
+# change in total yield
+(colSums(pred_yield) - sum(yield$yield))/sum(yield$yield)*100
+```
+
+```{r}
+rob_ch_clim_fut <- right_join(rob_ch_clim, fut_ER_dist, by = c("district", "province")) %>%
+  mutate(change = if_else(yield_change < 0, "decrease", "increase"))
+
+ggplot() +
+  geom_sf(data = dt_pol, fill = "white", color = "#77a37b", size = 0.3) +
+  geom_sf(data = vn_pol, fill = NA, color = "#255429") +
+  geom_point(data = rob_ch_clim_fut,
+  aes(x = Long, y = Lat, color = change)) +
+  theme_void() +
+  scale_color_manual(values = c("#eb5752", "#7eb2f2")) +
+  theme(legend.text = element_text(size = 15),
+  legend.title = element_text(size = 15)) +
+  guide(le)
+```
+
 
 
 ## Presence/absence of the significant k-mers
@@ -349,9 +462,22 @@ module load singularity
 singularity shell -B /shared/projects/most_kmer /shared/projects/most_kmer/KIsS/kiss/containers/Singularity.kiss_tools.sif
 
 cd /shared/projects/most_kmer/afterkiss/offset
+
+## the significant_kmers_bio.txt is too big 
+## so have to divide by 2
+## to prevent filter_kmers from crash or missing kmers
+split -l 10000000 -d significant_kmers_bio.txt
+
 filter_kmers -t /shared/projects/most_kmer/kiss_all/output/2.KMERS_TABLE/kmers_table \
--k significant_kmers_bio.txt \
--o signif_kmer_table.txt
+-k significant_kmers_bio_1.txt \
+-o signif_kmer_table_1.txt
+
+filter_kmers -t /shared/projects/most_kmer/kiss_all/output/2.KMERS_TABLE/kmers_table \
+-k significant_kmers_bio_2.txt \
+-o signif_kmer_table_2.txt
+
+head -n1 signif_kmer_table_x10.txt > signif_kmer_table.txt
+awk FNR-1 signif_kmer_table_x*.txt >> signif_kmer_table.txt
 ```
 
 ```
@@ -361,10 +487,11 @@ Filter these table using the "african significant kmers" using filter_kmers. Fil
  filter_kmers -t kmers_table_vietnan -k outliers_african.list -o filter_table
 Analyse the filter_table by pandas...
 ```
+
 ```{r}
-kmer_inds <- colnames(fread("./signif_kmer_table.txt", nrows = 0))
+kmer_inds <- colnames(fread("./signif_kmer_table.txt", nrows = 0, drop = 1))
 kmer_vn_table <- fread("./signif_kmer_table.txt", 
-                       select = grep("S-", kmer_inds)[1])
+                       select = grep("S-", kmer_inds), nrows = 10)
 kmer_vn_count <- colSums(kmer_vn_table)
 
 
@@ -372,6 +499,193 @@ af_samples <- fread("../bioclim/climatic_coordinates.csv", select = c("Label", "
 er_inds <- af_samples$Label[af_samples$snp_group == "ER"]
 kmer_er_table <- fread("./signif_kmer_table.txt", 
                        select = which(kmer_inds %in% er_inds))
+kmer_er_count <- colSums(kmer_er_table)
+
 ```
 
+total 102776471 kmers 
 kmer count in VN inds: 17,211,265 - 22,921,729
+kmer count in ER inds: 15,377,198 - 34,717,544
+
+```{r}
+samples <- fread("./all_sample_name.txt")
+samples$phenotype_value[is.na(samples$phenotype_value)] <- "Vietnam"
+samples <- samples %>% 
+  mutate(phenotype_value = factor(phenotype_value, c("D", "C", "AG", "OB", "ER", "Vietnam"))) %>% 
+  arrange(phenotype_value) %>% 
+  filter(label != "hb")
+fwrite(samples, "./all_samples_info.txt")
+
+kmer_sub_dif <- list.files("./kmer_dist", ".RDS", full.names = T)
+kmer_dif <- readRDS(kmer_sub_dif[1])
+for (i in kmer_sub_dif[-1]) {
+  kmer_dif <- kmer_dif + readRDS(i)
+}
+kmer_dif <- kmer_dif/103800513
+kmer_dif <- as.matrix(kmer_dif)
+kmer_dif <- kmer_dif[samples$accession_id,samples$accession_id]
+
+superheat(as.matrix(kmer_dif), 
+          membership.rows = samples$phenotype_value,
+          membership.cols = samples$phenotype_value, 
+          heat.pal = colorRampPalette(c("#f7f3dc", "#bfa92c"))(50),
+          # heat.col.scheme = "purple",
+          left.label.col = group_col[levels(samples$phenotype_value)],
+          left.label.size = .12, 
+          left.label.text.col = "white",
+          # left.label.text.col = c("white", rep("black", 3), "white", "black"),
+          bottom.label.size = .12,
+          bottom.label.text.col = "white",
+          # bottom.label.text.col = c("white", rep("black", 3), "white", "black"),
+          bottom.label.col = group_col[levels(samples$phenotype_value)])
+```
+
+```{r}
+kmer_dif_er <- kmer_dif[samples$accession_id[samples$phenotype_value %in% c("ER", "Vietnam")],
+         samples$accession_id[samples$phenotype_value %in% c("ER", "Vietnam")]]
+kmer_dif_er %>% 
+  as.data.frame() %>% 
+  arrange(desc(across(everything())))
+max(kmer_dif_er)
+kmer_dif_er[which.max(kmer_dif_er)]
+```
+
+```{r}
+kmer_pa_stats <- lapply(levels(samples$phenotype_value), function(gr) {
+  cat(gr, "\n")
+  kmer_gr_table <- fread("./signif_kmer_table.txt", 
+                       select = samples$accession_id[samples$phenotype_value == gr])
+  cat("kmer presence\n")
+  kmer_count <- colSums(kmer_gr_table)
+  cat("kmer absence\n")
+  ind_count <- rowSums(kmer_gr_table)
+  absence <- length(ind_count[ind_count == 0])
+  cat("output\n")
+  df <- data.frame(min_pre = min(kmer_count),
+                   max_pre = max(kmer_count),
+                   absence = absence)
+  return(df)
+})
+
+kmer_pa_stats <- lapply(levels(samples$phenotype_value), function(gr) {
+  cat(gr, "\n")
+  kmer_gr_table <- fread("./signif_kmer_table.txt", 
+                       select = samples$accession_id[samples$phenotype_value == gr])
+  cat("kmer absence\n")
+  ind_count <- rowSums(kmer_gr_table)
+  absence <- length(ind_count[ind_count == 0])
+  cat("output\n")
+  df <- data.frame(min_pre = min(kmer_count),
+                   max_pre = max(kmer_count),
+                   absence = absence)
+  return(df)
+})
+```
+
+
+```{r}
+kmer_shared_dif <- list.files("./kmer_shared", ".RDS", full.names = T)
+kmer_shared <- unlist(readRDS(kmer_shared_dif[1]))
+for (i in kmer_shared_dif[-1]) {
+  kmer_shared <- kmer_shared + unlist(readRDS(i))
+}
+names(kmer_shared) <- gsub("hb", "Hybrids", names(kmer_shared))
+kmer_shared_af <- kmer_shared[!grepl("Vietnam|Hybrids", names(kmer_shared))]
+for (i in names(kmer_shared_af)) {
+  grps <- str_split(i, "&", simplify = T)
+  grps_whb <- paste()
+}
+
+for (i in names(kmer_shared_af)) {
+  grps <- which(grp_ord %in% str_split(i, "&", simplify = T))
+  grps_whb <- grp_ord[sort(c(grps, 4))]
+  if (i == "Vietnam") {
+    next
+  } else {
+    cat(i, "->", paste(grps_whb, collapse = "&"), "\n")
+    kmer_shared_af[i] <- kmer_shared_af[i] + kmer_shared[paste(grps_whb, collapse = "&")]
+  }
+}
+sum(kmer_shared_af)
+
+kmer_fit <- euler(kmer_shared_af, input = c("disjoint", "union"),
+                  shape = "ellipse", 
+                  loss = "abs", loss_aggregator = "sum")
+
+plot(kmer_fit, 
+     quantities = TRUE,
+     fill = group_col[names(kmer_shared_af)[1:5]],
+     # lty = c(1,1,1,2,1,1,3),
+     # n = 4,
+     alpha = 0.7,
+     fontsize = 2)
+
+shared_table <- data.frame(overlap = names(kmer_shared),
+                           number = as.numeric(kmer_shared)) %>% 
+  filter(grepl("^.{1,2}&{1}Vietnam$", overlap))
+
+
+
+ggplot(shared_table) +
+  geom_col(aes(x = overlap, y = number)) + 
+  geom_text(aes(x = overlap, y = number, label = number), nudge_y = -1) +
+  theme_minimal_grid() + 
+  theme(axis.text.x = element_text(angle = 0)) 
+
+
+
+do.call(rbind, lapply(c("D", "C", "AG", "OB", "ER", "hybrid"), function(g) {
+  data.frame(overlap_group = paste0(g, "&Vietnam"),
+             nb_kmer = sum(kmer_shared[grepl(paste0(g, ".+Vietnam"), names(kmer_shared))]),
+             group = g)
+})) %>% 
+  ggplot() +
+  geom_col(aes(x = overlap_group, y = nb_kmer, fill = group), width = .6) + 
+  geom_text(aes(x = overlap_group, y = nb_kmer + 1e6, label = nb_kmer)) +
+  theme_minimal_grid() + 
+  theme(axis.text.x = element_text(angle = 0)) +
+  scale_fill_manual(values = group_col_af)
+
+# upset(fromExpression(kmer_shared[1:10]),
+#       nsets = 7, nintersects = 7, 
+#       # intersections = combo[1],
+#       keep.order = T,
+#       sets.bar.color = group_col[-c(6,8)])
+```
+
+
+```{r}
+data.frame(x = names(kmer_per_ind$Vietnam), y = as.vector(kmer_per_ind$Vietnam)) %>% 
+  mutate(x = factor(x, x)) %>% 
+  ggplot(aes(x = x, y = y)) + 
+  geom_col(width = 0.6) + 
+  theme_minimal_grid()
+```
+
+```{r}
+grp_ord <- names(kmer_shared)[1:7]
+kmer_shared_vn <- kmer_shared[!grepl("Hybrids", names(kmer_shared))]
+for (i in names(kmer_shared_vn)) {
+  grps <- which(grp_ord %in% str_split(i, "&", simplify = T))
+  grps_whb <- grp_ord[sort(c(grps, 4))]
+  if (i == "Vietnam") {
+    next
+  } else {
+    cat(i, "->", paste(grps_whb, collapse = "&"), "\n")
+    kmer_shared_vn[i] <- kmer_shared_vn[i] + kmer_shared[paste(grps_whb, collapse = "&")]
+  }
+}
+sum(kmer_shared_vn)
+kmer_fit_vn <- euler(kmer_shared_vn, input = c("disjoint", "union"),
+                  shape = "ellipse", 
+                  loss = "abs", loss_aggregator = "sum")
+
+plot(kmer_fit_vn, 
+     quantities = TRUE,
+     fill = group_col[names(kmer_shared_vn)[1:6]],
+     lty = c(rep(2,5),1),
+     # n = 4,
+     alpha = 0.7,
+     fontsize = 2)
+```
+
