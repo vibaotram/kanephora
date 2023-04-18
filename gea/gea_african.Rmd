@@ -13,6 +13,10 @@ library(Rsamtools)
 library(rtracklayer)
 library(GenomicRanges)
 library(circlize)
+library(GenomicRanges)
+library(XML)
+library(topGO)
+library(cowplot)
 ```
 
 
@@ -773,9 +777,9 @@ names(kmer_set) <- paste0("kmer_", 1:length(kmer_set))
 writeXStringSet(kmer_set, "./assembly/significant_kmers.fasta")
 ```
 
-## Blast of assembled contigs
+## Blast assembled contigs on NR database of Viridiplantae
 
-## for contigs assembled by m15
+### write the long contigs to a fasta file
 ```{r}
 fin_contigs$contig_id <- paste0("contig_", 1:nrow(fin_contigs))
 contigs4blast <- BStringSet(fin_contigs$contig)
@@ -785,6 +789,112 @@ writeXStringSet(contigs4blast, "./assembly/contigs_m15_l500.fasta", format = "fa
 writeXStringSet(contigs4blast, "./assembly/contigs_m15_l400.fasta", format = "fasta")
 ```
 
+### run blastx on NR database  
+with the script `./annotation/blast_nr_contigs_m15_l500_array_ifb.sh`
+
+
+### analyze blastx results of the contigs  
+
+#### summarize blast results
+
+```{r}
+parseblastxml <- function(blastxml) {
+  text <- xmlParse(blastxml)
+  list <- xmlToList(text)
+  df <- data.frame(contig = list$BlastOutput2$report$Report$results$Results$search$Search$`query-title`,
+                   contig_length = list$BlastOutput2$report$Report$results$Results$search$Search$`query-len`,
+                   bitscore = list$BlastOutput2$report$Report$results$Results$search$Search$hits$Hit$hsps$Hsp$`bit-score`,
+                   evalue = list$BlastOutput2$report$Report$results$Results$search$Search$hits$Hit$hsps$Hsp$evalue,
+                   align_length = list$BlastOutput2$report$Report$results$Results$search$Search$hits$Hit$hsps$Hsp$`align-len`)
+  return(df)
+}
+
+blastx_out <- list.files("./annotation/contigs_m15_l500_blastx", "*.xml", full.names = T)
+blastx_contigs <- do.call(rbind, lapply(blastx_out, function(b) {
+  print(which(blastx_out == b))
+  df <- parseblastxml(b)
+  # text <- xmlParse(b)
+  # list <- xmlToList(text)
+  # df <- data.frame(contig = list$BlastOutput2$report$Report$results$Results$search$Search$`query-title`,
+  #                  contig_length = list$BlastOutput2$report$Report$results$Results$search$Search$`query-len`,
+  #                  bitscore = list$BlastOutput2$report$Report$results$Results$search$Search$hits$Hit$hsps$Hsp$`bit-score`,
+  #                  evalue = list$BlastOutput2$report$Report$results$Results$search$Search$hits$Hit$hsps$Hsp$evalue,
+  #                  align_length = list$BlastOutput2$report$Report$results$Results$search$Search$hits$Hit$hsps$Hsp$`align-len`)
+  return(df)
+}))
+
+blastx_contigs_filt <- blastx_contigs %>% 
+  filter(as.numeric(evalue) < 1e-6)
+hist(as.numeric(blastx_contigs_filt$align_length))
+min(as.numeric(blastx_contigs_filt$align_length))
+max(as.numeric(blastx_contigs_filt$align_length))
+```
+-> 1833/3418 (54%) contigs have hits 
+
+#### obtain GO terms by Blast2GO
+
+
+check if all the sequences are blasted
+```{bash}
+
+files=$(ls)
+
+for f in $files
+do
+	if grep -Fxq "</BlastXML2>" $f
+	then 
+		continue
+	else
+		echo $f
+	fi
+done
+
+grep "Query" CC1.8_v2_batch_718_blastx_besthit.xml | wc -l
+
+
+for f in $files
+do
+	lines=$(grep "Query" $f | wc -l)
+	if [ $lines == 10 ]
+	then 
+		continue
+	else
+		echo $f
+	fi
+done
+```
+
+
+get GOs of the contigs
+```{r}
+read_mapping <- function(txtfile) {
+  df <- fread(txtfile, sep = "\t", header = F)
+  df <- df[,-9]
+  df_col <- str_split(read_lines(txtfile, n_max = 1), "\t", simplify = T)
+  colnames(df) <- df_col
+  return(df)
+} 
+
+contigs_go <- read_mapping("./annotation/blast2go_contigs_m15_l500_mapping.txt")
+contigs_go <- contigs_go %>% 
+  filter(Seq %in% blastx_contigs_filt$contig)
+contigs_go %>% pull(Seq) %>% unique %>% length
+```
+-> 1064/1833 (58%) contigs have GO terms - 7469 GOs
+
+
+get GOs of the reference (28880 genes)
+
+```{r}
+ref_go <- read_mapping("./annotation/blast2go_CC1_8_v2_mapping.txt")
+ref_go <- ref_go %>% 
+  filter(eValue < 1e-6)
+ref_go %>% pull(Seq) %>% unique %>% length
+
+```
+-> 18703/28880 (65%) genes have GO terms - 92404 GOs
+
+### GO enrichment
 
 ```{r}
 blast_out <- "./assembly/blast_contigs_m15_l500_results.txt"
@@ -800,32 +910,55 @@ blast_contigs %>%
   # filter(evalue < 0.01) %>% 
   arrange(desc(score))
 
-long_contigs %>% 
-  filter(contig_id %in% blast_contigs$contig_id) %>% 
-  slice_max(contig_length)
-long_contigs %>% 
-  filter(contig_id == "contig_611870")
+go_list <- factor(as.numeric(unique(ref_go$GO) %in% contigs_go$GO))
+names(go_list) <- 1:length(unique(ref_go$GO))
+length(go_list[go_list == 1])
+GO2geneID <- as.list(ref_go$Seq)
+names(GO2geneID) <- ref_go$GO
 
-blast_contigs %>% 
-  filter(contig_id == "contig_611870") %>% 
-  group_by(mapped_chr) %>% 
-  summarise(n = n())
+geneID2GO <- as.vector(ref_go$GO)
+names(geneID2GO) <- 1:nrow(ref_go)
 
-blast_contigs %>% 
-  filter(!grepl("Contig", mapped_chr)) %>% 
-  group_by(contig_id) %>% 
-  summarise(n_hits = n()) %>% 
-  arrange(n_hits) %>% 
-  filter(n_hits == 1)
+GOdata <- new("topGOdata",
+              description = "GO analysis on genomic regions under selection, BP",
+              ontology = "BP", # or CC or MF
+              allGenes = go_list,
+              nodeSize = 5,   # delete categories that have too few genes : in our case, a high number of genes gives similar results with a nodeSize of 5 or of 10 (in the tutorial: values between 5 and 10 give more stable results) 
+              annot = annFUN.gene2GO,
+              gene2GO = geneID2GO
+)
 
-blast_contigs %>% 
-  filter(contig_id == "contig_3531067") %>% 
-  # filter(contig_id %in% blast_contigs$contig_id) %>% 
-  group_by(mapped_chr) %>% 
-  summarise(n = n())
+#### Fisher test with Classic algorithm not taking into account the hierarchical link between GOterms
+Fisherclassic <- runTest(GOdata, algorithm = "classic", statistic = "fisher")
 
-blast_contigs %>% 
-  filter(align_length > 100)
+#returns a table listing the top 20 GO terms found as significantly enriched
+Fisherclassic.table<-GenTable(GOdata, classicFisher = Fisherclassic, topNodes=10, numChar = 1e6)
+Fisherclassic.table
+write.table(Fisherclassic.table, "resultFisherclassic.table.txt" , sep=";", quote=FALSE)
+
+#returns a subgraph induced by the top 4 GO terms found as significantly enriched 
+showSigOfNodes(GOdata, score(Fisherclassic), firstSigNodes = 4, useInfo ='all')
+
+#### Fisher test with weight01 algorithm taking into account the hierarchical link between GOterms
+FisherWeight01<-runTest(GOdata, algorithm = "weight01", statistic = "fisher")
+
+#returns a table listing the top 50 GO terms found as significantly enriched
+FisherWeight01.table<-GenTable(GOdata, Weight01 = FisherWeight01, topNodes=123, numChar = 1e6)
+FisherWeight01.table
+
+
+#returns a subgraph induced by the top 4 GO terms found as significantly enriched 
+showSigOfNodes(GOdata, score(FisherWeight01), firstSigNodes = 4, useInfo ='all')
+
+
+allRes <- GenTable(GOdata, classic = Fisherclassic, weight = FisherWeight01,
+         orderBy = "weight", ranksOf = "classic", topNodes = 20, numChar = 1e6)
+allRes
+```
+
+```{r}
+library(GOfuncR)
+get_parent_nodes(FisherWeight01.table$GO.ID)
 ```
 
 ```{r GR_blast_m15}
@@ -1106,9 +1239,160 @@ contigs_blastx <- lapply(str_sort(xml_list, numeric = T), function(f) {
 xml_remove(xmlChildren(xmlRoot(doc1)[["BlastOutput2"]][["report"]][["Report"]][["results"]][["Results"]][["search"]][["Search"]][["hits"]][["Hit"]][["hsps"]])[1])
 ```
 
+## Blast assembled contigs on the reference genome
+
+### run blastn on the reference genome
+with the script `./assembly/blastn_contigs.sh`
+
+### analyze blastn results
+```{r}
+blastn_out <- "./annotation/blast_contigs_m15_l500_CC1_8.tsv"
+blastn_contigs <- fread(blastn_out)
+colnames(blastn_contigs) <- c("contig", "sacc", "qstart", "qend", "sstart", 
+                              "send", "bitscore", "score", "evalue", "pident", 
+                              "gaps", "mismatch", "length", "qlen")
+## number of contigs have hits
+blastn_contigs %>% pull(contig) %>% unique %>% length
+
+## summary of alignment length
+ggplot(blastn_contigs) + 
+  geom_histogram(aes(x = length), binwidth = 10) + 
+  scale_x_continuous(breaks = seq(0, max(blastn_contigs$length), 50)) +
+  xlab("Alignment length") +
+  scale_y_sqrt() +
+  theme_minimal_grid()
+min(blastn_contigs$length)
+
+## summary of hits
+blastn_sum <- blastn_contigs %>% 
+  group_by(contig) %>% 
+  summarise(n_hits = n())
+hist(blastn_sum$n_hits)
+ggplot(blastn_sum) + 
+  geom_histogram(aes(x = n_hits), binwidth = 1) + 
+  xlab("Number of hits of a contig") +
+  scale_x_continuous(breaks = seq(0, max(blastn_contigs$length), 50)) +
+  theme_minimal_grid()
+
+blastn_contigs %>% 
+  mutate(sacc = gsub("Contig\\d+", "CC1.8.Chr00", sacc)) %>% 
+  mutate(chrom = as.factor(as.numeric(gsub("CC1.8.Chr", "", sacc)))) %>% 
+  group_by(chrom) %>% 
+  summarize(n_hits = n()) %>% 
+  ggplot() + 
+  geom_col(aes(x = chrom, y = n_hits), width = 0.7) +
+  ylab("Number of hits") +
+  theme_minimal_grid()
+```
+-> 237/3418 (7%) contigs have hits
+
+
+```{r}
+blastn_contigs %>% 
+  mutate(start = if_else(sstart < send, sstart, send),
+         end = if_else(sstart < send, send, sstart),
+         strand = if_else(sstart < send, "-", "+"))
+contig_hits <- makeGRangesFromDataFrame(
+  blastn_contigs %>% 
+    mutate(start = if_else(sstart < send, sstart, send),
+           end = if_else(sstart < send, send, sstart)), 
+  seqnames.field = "sacc",
+  keep.extra.columns = T)
+
+ref_genes <- ref_go %>% 
+  distinct(Seq) %>% 
+  mutate(seqnames = gsub("\\_.+", "", Seq),
+         start = gsub("(.+\\_|-.+)", "", Seq),
+         end = gsub(".+\\-", "", Seq))
+
+ref_genes_range <- makeGRangesFromDataFrame(ref_genes)
+contig_hits_ongene <- contig_hits[contig_hits %over% ref_genes_range]
+contig_hits_ongene$contig %>% unique %>% length
+contig_hits[overlapsAny(contig_hits, ref_genes_range)]
+```
+
+```{r}
+blastn_genes_out <- "./annotation/blast_contigs_m15_l500_on_genes.tsv"
+blastn_genes_contigs <- fread(blastn_genes_out)
+colnames(blastn_genes_contigs) <- c("contig", "sacc", "qstart", "qend", "sstart", 
+                              "send", "bitscore", "score", "evalue", "pident", 
+                              "gaps", "mismatch", "length", "qlen")
+## number of contigs have hits
+blastn_genes_contigs %>% pull(contig) %>% unique %>% length
+```
+
+### GO enrichment
 ```{r}
 contig_genes <- fread("./annotation/blastn_contigs_m15_l400_CC1.8_v2_results.txt")
 colnames(contig_genes) <- c("contig_id", "start", "end", "contig_length", "align_length", "sacc", "sstart", "send", "bitscore", "score", "evalue", "pident", "gaps", "mismatch")
+contig_gene_list <- unique(gsub(":", "_", blastn_genes_contigs$sacc))
+gene_list <- factor(as.numeric(unique(ref_go$Seq) %in% contig_gene_list))
+names(gene_list) <- unique(ref_go$Seq)
+length(gene_list[gene_list == 1])
+GO2geneID <- as.list(ref_go$Seq)
+names(GO2geneID) <- ref_go$GO
 
+geneID2GO <- sapply(names(gene_list), 
+                    function(g) ref_go$GO[ref_go$Seq == g],
+                    USE.NAMES = T)
+
+GOdata2 <- new("topGOdata",
+              description = "GO analysis on genomic regions under selection, BP",
+              ontology = "BP", # or CC or MF
+              allGenes = gene_list,
+              nodeSize = 5,   # delete categories that have too few genes : in our case, a high number of genes gives similar results with a nodeSize of 5 or of 10 (in the tutorial: values between 5 and 10 give more stable results) 
+              annot = annFUN.gene2GO,
+              gene2GO = geneID2GO
+)
+
+#### Fisher test with Classic algorithm not taking into account the hierarchical link between GOterms
+Fisherclassic2 <- runTest(GOdata2, algorithm = "classic", statistic = "fisher")
+
+#returns a table listing the top 20 GO terms found as significantly enriched
+Fisherclassic.table2<-GenTable(GOdata2, classicFisher = Fisherclassic2, topNodes=10, numChar = 1e6)
+Fisherclassic.table2
+write.table(Fisherclassic.table2, "resultFisherclassic.table.txt" , sep=";", quote=FALSE)
+
+#returns a subgraph induced by the top 4 GO terms found as significantly enriched 
+showSigOfNodes(GOdata2, score(Fisherclassic), firstSigNodes = 4, useInfo ='all')
+
+#### Fisher test with weight01 algorithm taking into account the hierarchical link between GOterms
+FisherWeight01_2<-runTest(GOdata2, algorithm = "weight01", statistic = "fisher")
+
+#returns a table listing the top 50 GO terms found as significantly enriched
+FisherWeight01.table2<-GenTable(GOdata2, Weight01 = FisherWeight01_2, topNodes=3, numChar = 1e6)
+FisherWeight01.table2
+
+
+#returns a subgraph induced by the top 4 GO terms found as significantly enriched 
+showSigOfNodes(GOdata2, score(FisherWeight01_2), firstSigNodes = 4, useInfo ='all')
+
+
+allRes <- GenTable(GOdata2, classic = Fisherclassic, weight = FisherWeight01_2,
+         orderBy = "weight", ranksOf = "classic", topNodes = 20, numChar = 1e6)
+allRes
+```
+
+
+```{r}
+all_long_contigs <- paste0("contig_", 1:3418)
+length(all_long_contigs[!all_long_contigs %in% c(blastx_contigs_filt$contig, 
+                                                 blastn_contigs$contig, 
+                                                 blastn_genes_contigs$contig)])
+```
+
+### compare with Remi's results
+```{r}
+library(readxl)
+remi_snps <- read_xlsx("./annotation/gcb16191-sup-0004-tables2-s3.xlsx", sheet = "candidate SNPs")
+
+remi_snps <- remi_snps %>% 
+  filter(chromosome != 0) %>% 
+  mutate(chromosome = paste0("CC1.8.Chr", sprintf("%02d", chromosome)))
+remi_range <- makeGRangesFromDataFrame(remi_snps, seqnames.field = "chromosome",
+                                       start.field = "physical_position",
+                                       end.field = "physical_position")
+remi_range[remi_range %within% contig_hits]
+contig_hits[contig_hits %over% remi_range]
 ```
 
