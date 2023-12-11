@@ -20,6 +20,8 @@ library(GGally)
 library(viridis)
 library(vegan)
 library(ggfortify)
+library(qvalue)
+library(Rsamtools)
 ```
 
 ```{r, eval=FALSE}
@@ -78,8 +80,8 @@ bed_nb <- rand_set %/% 100 # 4
 range_nb <- rand_set %% 100 # 15
 
 scratch_dir <- "/scratch/kmer/af_kiss/results_ci2"
-kiss_dir <- "./tmp/af_ci2"
-kiss_dir <- "/shared/projects/most_kmer/kiss_out"
+# kiss_dir <- "./tmp/af_ci2"
+kiss_dir <- "/shared/projects/most_kmer/kiss_af/output"
 ```
 
 -> batch 4, subset 15
@@ -97,7 +99,7 @@ rsync -vaurRP  /scratch/kmer/af_kiss/results_ci2/./6.PCADAPT/output_file.4_15_BH
 
 ```{r}
 bed_file <- file.path(kiss_dir, "3.TABLE2BED/output_file.4.bed")
-matrix <- BEDMatrix(bed_file)
+matrix <- BEDMatrix(bed_file, simple_names = T)
 
 # bim_file <- file.path(kiss_dir, "3.TABLE2BED/output_file.4.bim")
 # bim <- read_delim(bim_file, delim = "\t", col_names = F)
@@ -108,10 +110,13 @@ kl <- scan(kmer_file)
 kmer_names_list <- sort(kl) # kmer number by segment
 submat <- matrix[, sort(kl)]
 
-af_sample_file <- "./af_sample_name.txt"
+af_sample <- fread("/shared/projects/most_kmer/kiss_af/samples/af_sample_name.txt",
+                   data.table = F)
+
+af_sample_file <- "/shared/projects/most_kmer/kiss_af/samples/af_sample_name.txt"
 af_sample <- read.delim(af_sample_file)
 
-af_kiss_file <- "./af_sample.txt"
+af_kiss_file <- "/shared/projects/most_kmer/kiss_af/samples/af_sample.txt"
 af_kiss <- read.delim(af_kiss_file)
 
 af_sample <- left_join(af_kiss %>% select(accession_id), af_sample)
@@ -121,13 +126,13 @@ af_sample <- left_join(af_kiss %>% select(accession_id), af_sample)
 
 ```{r}
 ## SNMF
-snmf_dir <- file.path(tmp_dir, "snmf")
+snmf_dir <- file.path(".", "snmf")
 dir.create(snmf_dir, showWarnings = F)
 geno_file <- file.path(snmf_dir, "kmer.geno")
 write.geno(submat, geno_file)
 
 snmf_kmer <- snmf(geno_file, K = 1:10, CPU = 2, repetitions = 10, project = "new", entropy = T, seed = 987654321)
-
+snmf_kmer <- load.snmfProject(file.path(snmf_dir, "kmer.snmfProject"))
 plot(snmf_kmer, pch = 16)
 
 ## best k = 5
@@ -136,7 +141,7 @@ k <- 5
 best_run <- which.min(cross.entropy(snmf_kmer, K = k))
 
 ## plot ancestry proportion
-ind_order <- barchart(snmf_kmer, K = k, run = best_run, plot = F)
+ind_order_kmer <- LEA::barchart(snmf_kmer, K = k, run = best_run, plot = F)
 kmer_ref_prop <- as.data.frame(Q(snmf_kmer, K = k, run = best_run))
 kmer_ref_prop$Label <- paste(af_sample$accession_id, af_sample$phenotype_value, sep = "_")
 kmer_ref_prop$prior <- factor(af_sample$phenotype_value, levels = c("ER", "OB", "C", "AG", "D"))
@@ -146,7 +151,7 @@ repre <- kmer_ref_prop %>% group_by(ancestry) %>% arrange(desc(proportion)) %>% 
 # rename_ancestr <- sapply(repre$ancestry, function(i) af_sample$phenotype_value[af_sample$accession_id == repre$Label[repre$ancestry == i]])
 # levels(prop$ancestry) <- repre$prior
 
-kmer_ref_prop$Label <- factor(kmer_ref_prop$Label, levels = unique(kmer_ref_prop$Label)[ind_order$order], ordered = F)
+kmer_ref_prop$Label <- factor(kmer_ref_prop$Label, levels = unique(kmer_ref_prop$Label)[ind_order_kmer$order], ordered = F)
 kmer_ref_prop$ancestry <- sapply(kmer_ref_prop$ancestry, function(i) repre$prior[repre$ancestry == i], USE.NAMES = F)
 
 ggplot(kmer_ref_prop) +
@@ -172,11 +177,28 @@ ggplot(kmer_ref_prop) +
 ```
 
 ```{r}
+snmf_group <- kmer_ref_prop %>% 
+  group_by(Label) %>% 
+  slice_max(proportion) %>% 
+  mutate(group = if_else(proportion > 0.7, as.character(ancestry), "hybrid"))
+
+snmf_group %>% 
+  group_by(group) %>% 
+  summarise(n = n())
+
+write.csv(snmf_group %>% 
+            mutate(Label = gsub("\\_\\D{1,2}", "", Label)), 
+          "af_samples_ancestry_kmers.csv",
+          row.names = F, quote = F)
+```
+
+
+```{r}
 k <- 6
 best_run <- which.min(cross.entropy(snmf_kmer, K = k))
 
 ## plot ancestry proportion
-ind_order <- barchart(snmf_kmer, K = k, run = best_run, plot = F)
+ind_order <- LEA::barchart(snmf_kmer, K = k, run = best_run, plot = F)
 kmer_ref_prop <- as.data.frame(Q(snmf_kmer, K = k, run = best_run))
 kmer_ref_prop$Label <- paste(af_sample$accession_id, af_sample$label, sep = "_")
 kmer_ref_prop$Label <- factor(kmer_ref_prop$Label, levels = unique(kmer_ref_prop$Label)[ind_order$order], ordered = F)
@@ -210,10 +232,18 @@ ggplot(kmer_ref_prop) +
 rsync -vaurP baotram@core.cluster.france-bioinformatique.fr:/shared/projects/most_kmer/vcf_bgi_2021/gbp_output/filtered_vcf_by_chrom/all_final_thin5000_maf002.recode.vcf /data/projects/rob/scripts/kmer/tmp
 
 rsync -vaurP /scratch/kmer/all_kiss/6.PCADAPT/output_file.10_3_BH0.05.pcadapt.rplot.pdf  /data/projects/rob/scripts/kmer/tmp/all
+
+cd /shared/projects/afrob_seq/wgs_snp/vcf_bgi_2021/gbp_output/filtered_vcf_by_chrom
+module load vcftools/0.1.16
+vcftools \
+--vcf af_final_maf005_thin5k_60inds.recode.vcf \
+--012
+
 ```
 
 ```{r}
 vcf_file <- "/data/projects/rob/scripts/kmer/tmp/all_final_thin5000_maf002.recode.vcf"
+vcf_file <- "/shared/projects/afrob_seq/wgs_snp/vcf_bgi_2021/gbp_output/filtered_vcf_by_chrom/af_final_maf005_thin5k_60inds.recode.vcf"
 vcf_header <- scanBcfHeader(vcf_file)
 ind_names <- vcf_header[[1]]@listData$Sample
 ref_names <- grep("(S-|TR)", ind_names, invert = T, value = T)
@@ -230,10 +260,13 @@ ref_names <- sapply(ref_names, function(i) {
 }, USE.NAMES = F)
 ```
 
+
+
 ```{r}
 snp_snmf <- load.snmfProject("/data/projects/rob/data/most_elai/snmf/thin_ref.snmfProject")
-ind_order_snp <- barchart(snp_snmf, K = k, run = which.min(cross.entropy(snp_snmf, K = 5)), plot = F)
-snp_ref_prop <- as.data.frame(Q(snp_snmf, K = k, run = which.min(cross.entropy(snp_snmf, K = k))))
+snp_snmf <- load.snmfProject("/shared/projects/elai_most/diversity_wasi/seq_analysis/snmf_60inds/thin_ref.snmfProject")
+ind_order_snp <- LEA::barchart(snp_snmf, K = 5, run = which.min(cross.entropy(snp_snmf, K = 5)), plot = F)
+snp_ref_prop <- as.data.frame(Q(snp_snmf, K = 5, run = which.min(cross.entropy(snp_snmf, K = 5))))
 snp_ref_prop$Label <- ref_names
 snp_ref_prop$prior <- factor(gsub(".+_", "", ref_names), levels = c("ER", "OB", "C", "AG", "D"))
 snp_ref_prop <- pivot_longer(snp_ref_prop, cols = V1:V5, names_to = "ancestry", values_to = "proportion")
@@ -267,25 +300,57 @@ ggplot(snp_ref_prop) +
     ) 
 ```
 
+assign ancestry
+```{r}
+snp_ref_prop %>%
+  group_by(Label) %>% 
+  slice_max(proportion) %>% 
+  mutate(assign = if_else(proportion > 0.7, as.character(ancestry), "hybrid")) %>% 
+  dplyr::select(Label, assign) %>%
+  # write.csv(., "offset/af_samples_ancestry_common_remi.csv", quote = F,
+  #           col.names = T, row.names = F)
+  # group_by(assign) %>%
+  # summarise(n = n())
+  left_join(snp_ref_prop, ., by = "Label") %>%
+  pivot_wider(names_from = ancestry, values_from = proportion) %>% 
+  mutate(Label = gsub("_\\D{1,2}$", "", Label)) %>% 
+  write.csv(., "af_samples_ancestry.csv", quote = F,
+            col.names = T, row.names = F)
+```
+
+
 ### compare snmf results of 1M kmers and the snps set
 
 ```{r}
 both_prop <- full_join(kmer_ref_prop %>% mutate(type = "1M KMER"),
           snp_ref_prop %>% mutate(type = "100K SNP"))
+both_prop <- both_prop %>% 
+  mutate(Label = factor(Label, levels = rev(unique(snp_ref_prop$Label)[ind_order_snp$order])))
+
+ref_ord <- both_prop %>% 
+  group_by(ancestry) %>% 
+  mutate(group)
+  group_by(group) %>% 
+  filter(ancestry == group) %>% 
+  mutate(group = factor(group, levels = c("D", "C", "AG", "ER"))) %>% 
+  arrange(group, desc(proportion)) %>% 
+  pull(Label)
 pdf("/data/projects/rob/data/kmers/plots/structure_check.pdf", width = 15, height = 8)
+tiff("/shared/projects/most_kmer/paper_plot/structure_ref.tiff",
+     width = 10, height = 6, units = "in", res = 1200)
 ggplot(both_prop) +
   facet_grid(rows = vars(type)) +
-  geom_col(aes(x = Label, y = proportion, fill = ancestry), position = position_stack(), width = .95, size = 0) + 
+  geom_col(aes(x = Label, y = proportion, fill = ancestry), position = position_stack(), width = 0.95, size = 0) + 
   # scale_fill_viridis_d(end = .9)+
   scale_fill_manual(values = turbo(5)) +
   scale_x_discrete(expand = c(0,0)) +
   scale_y_continuous(expand = c(0, 0)) +
   ylab("Ancestry proportion")  +
+  xlab("Individual") +
   theme_minimal() +
   theme(
-    axis.text.x = element_text(angle = 90, size = 10, hjust = 1),
-    axis.title.y = element_text(size = 12),
-    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),
+    axis.title = element_text(size = 14),
     legend.text = element_text(size = 12),
     legend.title = element_text(size = 12),
     legend.key.size = unit(5, "mm"),
@@ -298,12 +363,10 @@ dev.off()
 ```
 
 ```{r}
-kmer_snp_cor <- full_join(kmer_ref_prop %>% rename(kmer = proportion),
-          snp_ref_prop %>% rename(snp = proportion)) %>% 
-  group_by(ancestry) %>% 
-  summarise(correlation = cor(kmer, snp)) %>% 
-  pull(correlation) %>% mean()
-cat("correlation between snmf of kmer set and snp set:", kmer_snp_cor)
+kmer_snp_cor <- full_join(kmer_ref_prop %>% dplyr::rename(kmer = proportion),
+          snp_ref_prop %>% dplyr::rename(snp = proportion))
+
+cor.test(kmer_snp_cor$kmer, kmer_snp_cor$snp)
 ```
 
 -> very high correlation
@@ -312,7 +375,8 @@ cat("correlation between snmf of kmer set and snp set:", kmer_snp_cor)
 
 ```{r}
 af_snp_geno_file <- "/data/projects/rob/data/most_elai/snmf/thin_ref.geno"
-af_snp_pca <- pca(af_snp_geno_file)
+af_snp_geno_file <- "/shared/projects/most_kmer/afterkiss/snmf/thin_ref.geno"
+af_snp_pca <- LEA::pca(af_snp_geno_file)
 af_snp_proj <- as.data.frame(af_snp_pca$projections[,1:2])
 af_snp_proj$accession_id <- gsub("_.{1,2}$", "", ref_names)
 af_snp_proj <- left_join(af_snp_proj, af_sample)
@@ -374,6 +438,217 @@ dev.off()
 
 -> 399,265,658 adaptive k-mers (K = 7)
 
+
+### snmf on the whole k-mer set
+```{r}
+kiss_dir <- "/shared/projects/most_kmer/kiss_all/output/"
+bed_file <- file.path(kiss_dir, "3.TABLE2BED/output_file.4.bed")
+matrix <- BEDMatrix(bed_file, simple_names = T)
+
+# bim_file <- file.path(kiss_dir, "3.TABLE2BED/output_file.4.bim")
+# bim <- read_delim(bim_file, delim = "\t", col_names = F)
+
+kmer_file <- file.path(kiss_dir, "5.RANGES/output_file.4/15.txt")
+kl <- scan(kmer_file)
+
+kmer_names_list <- sort(kl) # kmer number by segment
+submat <- matrix[, sort(kl)]
+
+
+all_sample_file <- "/shared/projects/most_kmer/kiss_all/samples/all_sample_name.txt"
+all_sample <- read.delim(all_sample_file)
+
+all_kiss_file <- "/shared/projects/most_kmer/kiss_all/samples/all_sample.txt"
+all_kiss <- read.delim(all_kiss_file)
+
+all_sample <- left_join(all_kiss %>% select(accession_id), all_sample)
+
+## SNMF
+snmf_dir <- file.path(".", "snmf")
+dir.create(snmf_dir, showWarnings = F)
+geno_file <- file.path(snmf_dir, "all_kmer.geno")
+write.geno(submat, geno_file)
+
+all_snmf_kmer <- snmf(geno_file, K = 1:10, CPU = 54, repetitions = 10, project = "new", entropy = T, seed = 987654321)
+all_snmf_kmer <- load.snmfProject("./snmf/all_kmer.snmfProject")
+plot(all_snmf_kmer)
+```
+
+```{r}
+## best k = 5
+## choose best run based on cross entropy
+k <- 3
+kmer_all_prop <- as.data.frame(Q(all_snmf_kmer, K = k, run = best_run))
+kmer_all_prop$Label <- paste(all_sample$accession_id, all_sample$phenotype_value, sep = "_")
+kmer_all_prop$prior <- factor(all_sample$phenotype_value, levels = c("ER", "OB", "C", "AG", "D"))
+kmer_all_prop <- pivot_longer(kmer_all_prop, cols = V1:V3, names_to = "ancestry", values_to = "proportion")
+## rename ancestry
+all_repre <- kmer_all_prop %>% 
+  filter(!is.na(prior) | Label == "S-63_NA") %>%
+  group_by(ancestry) %>% 
+  # slice_max(proportion)
+  arrange(desc(proportion)) %>% 
+  slice_head(n = 2) %>% 
+  slice_tail(n = 1)
+# rename_ancestr <- sapply(repre$ancestry, function(i) af_sample$phenotype_value[af_sample$accession_id == repre$Label[repre$ancestry == i]])
+# levels(prop$ancestry) <- repre$prior
+
+kmer_all_prop$Label <- factor(kmer_all_prop$Label, levels = unique(kmer_all_prop$Label)[ind_order$order], ordered = F)
+kmer_all_prop$ancestry <- sapply(kmer_all_prop$ancestry, function(i) all_repre$prior[all_repre$ancestry == i], USE.NAMES = F)
+
+kmer_all_prop <- kmer_all_prop %>% 
+  mutate(group = if_else(is.na(as.character(prior)), "Vietnam", "Africa")) %>% 
+  mutate(ancestry = factor(ancestry, levels = c("C", "AG", "D", "OB", "ER", NA)))
+
+ggplot(kmer_all_prop %>% 
+         mutate(ancestry = if_else(is.na(ancestry), "NA", as.character(ancestry))) %>% 
+         mutate(ancestry = factor(ancestry, c("AG", "C", "D", "ER", "OB", "NA")))) +
+  facet_grid(cols = vars(group), scale = "free", space = "free") +
+  geom_col(aes(x = Label, y = proportion, fill = ancestry), position = position_stack(), width = 1, size = 0) + 
+  # scale_fill_viridis_d(end = .9)+
+  scale_fill_manual(values = c(group_col[1:5], "NA" = "gray")) +
+  scale_x_discrete(expand = c(0,0)) +
+  scale_y_continuous(expand = c(0, 0)) +
+  ylab("Ancestry proportion")  +
+  xlab("Individual") +
+  theme_minimal() +
+  theme(
+    # axis.text.x = element_blank(),
+    axis.text.x = element_text(angle = 90, hjust = 1),
+    axis.title = element_text(size = 14),
+    strip.text = element_text(size = 14),
+    # axis.title.x = element_blank(),
+    legend.text = element_text(size = 12),
+    legend.title = element_text(size = 12),
+    legend.key.size = unit(5, "mm"),
+    axis.ticks.y = element_line(size = .1),
+    axis.text.y = element_text(size = 8),
+    panel.spacing = unit(2, "mm"),
+    # strip.text.x = element_text(angle = 90, size = 10, hjust = 1)
+    ) 
+```
+
+
+```{r}
+snp_all_snmf <- load.snmfProject("/shared/projects/elai_most/diversity_wasi/seq_analysis/snmf_60inds/thin_all.snmfProject")
+
+best_k <- 5 #which.min(lapply(1:10, function(i) min(cross.entropy(all_snmf, K = i))))
+best_run <- which.min(cross.entropy(snp_all_snmf, K = best_k))
+ind_ord <- LEA::barchart(snp_all_snmf, K = best_k, run = best_run, plot = F)
+snp_all_prop <- Q(snp_all_snmf, K = best_k, run = best_run)
+snp_all_prop <- snp_all_prop %>% 
+  as.data.frame() %>% 
+  mutate(ind = factor(rownames(df_thin_md), 
+                      levels = rownames(df_thin_md)[ind_ord$order])) %>% 
+  pivot_longer(cols = -ind, names_to = "ancestry", values_to = "proportion")
+snp_all_prop$ancestry <- as.factor(snp_all_prop$ancestry)
+levels(snp_all_prop$ancestry) <- c("C", "OB", "ER", "AG", "D")
+snp_all_prop$ancestry <- factor(snp_all_prop$ancestry, levels = c("ER", "OB", "C", "AG", "D"))
+ggplot(snp_all_prop) + 
+  geom_col(aes(x = ind, y = proportion, fill = ancestry), width = 1) + 
+  scale_fill_manual(values = turbo_col) +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 90, h = 1, vjust = 0.5))
+```
+
+
+### snmf on African+TRs
+```{r}
+kiss_dir <- "/shared/projects/most_kmer/kiss_all/output/"
+bed_file <- file.path(kiss_dir, "3.TABLE2BED/output_file.4.bed")
+matrix <- BEDMatrix(bed_file, simple_names = T)
+
+# bim_file <- file.path(kiss_dir, "3.TABLE2BED/output_file.4.bim")
+# bim <- read_delim(bim_file, delim = "\t", col_names = F)
+
+kmer_file <- file.path(kiss_dir, "5.RANGES/output_file.4/15.txt")
+kl <- scan(kmer_file)
+
+kmer_names_list <- sort(kl) # kmer number by segment
+submat <- matrix[!grepl("S-", rownames(submat)), sort(kl)]
+
+
+all_sample_file <- "/shared/projects/most_kmer/kiss_all/samples/all_sample_name.txt"
+all_sample <- read.delim(all_sample_file)
+
+all_kiss_file <- "/shared/projects/most_kmer/kiss_all/samples/all_sample.txt"
+all_kiss <- read.delim(all_kiss_file)
+
+all_sample <- left_join(all_kiss %>% select(accession_id), all_sample)
+aftr_sample <- all_sample %>% 
+  filter(!grepl("S-", accession_id))
+
+## SNMF
+snmf_dir <- file.path(".", "snmf")
+dir.create(snmf_dir, showWarnings = F)
+geno_file <- file.path(snmf_dir, "aftr_kmer.geno")
+write.geno(submat, geno_file)
+
+aftr_snmf_kmer <- snmf(geno_file, K = 1:10, CPU = 54, repetitions = 10, project = "new", entropy = T, seed = 987654321)
+aftr_snmf_kmer <- load.snmfProject("./snmf/aftr_kmer.snmfProject")
+plot(aftr_snmf_kmer)
+```
+
+```{r}
+## best k = 5
+## choose best run based on cross entropy
+k <- 5
+best_run <- which.min(cross.entropy(aftr_snmf_kmer, K = k))
+
+## plot ancestry proportion
+ind_order <- LEA::barchart(aftr_snmf_kmer, K = k, run = best_run, plot = F)
+kmer_aftr_prop <- as.data.frame(Q(aftr_snmf_kmer, K = k, run = best_run))
+kmer_aftr_prop$Label <- paste(aftr_sample$accession_id, aftr_sample$phenotype_value, sep = "_")
+kmer_aftr_prop$prior <- factor(aftr_sample$phenotype_value, levels = c("ER", "OB", "C", "AG", "D"))
+kmer_aftr_prop <- pivot_longer(kmer_aftr_prop, cols = V1:V5, names_to = "ancestry", values_to = "proportion")
+## rename ancestry
+repre <- kmer_aftr_prop %>% 
+  filter(!grepl("TR", Label)) %>% 
+  group_by(ancestry) %>% 
+  arrange(desc(proportion)) %>% 
+  slice_head(n = 1) %>% slice_tail(n = 1)
+
+# ind_order <- kmer_aftr_prop %>% 
+#   group_by(Label) %>% 
+#   slice_max(proportion) %>% 
+#   arrange(ancestry, desc(proportion)) %>% 
+#   pull("Label") %>% as.character()
+
+kmer_aftr_prop$Label <- factor(kmer_aftr_prop$Label, 
+                               levels = c(unique(kmer_ref_prop$Label)[ind_order_kmer$order], 
+                                          grep("TR", unique(kmer_aftr_prop$Label)[ind_order$order], value = T), 
+                                          ordered = F))
+kmer_aftr_prop$ancestry <- sapply(kmer_aftr_prop$ancestry, function(i) repre$prior[repre$ancestry == i], USE.NAMES = F)
+kmer_aftr_prop <- kmer_aftr_prop %>% 
+  mutate(group = if_else(grepl("TR", Label), "Vietnam", "Africa"))
+
+tiff("/shared/projects/most_kmer/paper_plot/structure_ref_tr.tiff",
+     width = 10, height = 4, units = "in", res = 1200)
+ggplot(kmer_aftr_prop) +
+  facet_grid(cols = vars(group), scale = "free", space = "free") +
+  geom_col(aes(x = Label, y = proportion, fill = ancestry), position = position_stack(), width = .95) + 
+  # scale_fill_viridis_d(end = .9)+
+  scale_fill_manual(values = turbo(5)) +
+  scale_x_discrete(expand = c(0,0)) +
+  scale_y_continuous(expand = c(0, 0)) +
+  ylab("Ancestry proportion")  +
+  xlab("Individual") + 
+  theme_minimal() +
+  theme(
+    axis.text.x = element_blank(),
+    axis.title = element_text(size = 14),
+    # axis.title.x = element_blank(),
+    legend.text = element_text(size = 12),
+    legend.title = element_text(size = 12),
+    legend.key.size = unit(5, "mm"),
+    axis.ticks.y = element_line(size = .1),
+    axis.text.y = element_text(size = 8),
+    panel.spacing = unit(2, "mm"),
+    strip.text = element_text(size =14)
+    ) 
+dev.off()
+```
+
 ## GEA
 
 Below is a trial on a random k-mer set (batch 415) of the african data
@@ -381,17 +656,17 @@ Below is a trial on a random k-mer set (batch 415) of the african data
 ### environment variables
 
 ```{r}
-clim_file <- "./gea/climatic_variables_2.1.csv"
+clim_file <- "./gea/lfmm/lfmm_explanatory_2.1.csv"
 clim <- fread(clim_file, data.table = T)
 # write.csv(clim[,1:21], "./gea/lfmm/lfmm_explanatory.csv", 
 #           row.names = F, quote = F)
 clim <- clim %>% column_to_rownames("Label")
 
-clim <- clim %>% 
-  mutate(snp_group = case_when(snp_group %in% c("A", "G") ~ "AG",
-                               snp_group %in% c("E", "R") ~ "ER",
-                               snp_group %in% c("O", "B") ~ "OB",
-                               TRUE ~ snp_group))
+# clim <- clim %>% 
+#   mutate(snp_group = case_when(snp_group %in% c("A", "G") ~ "AG",
+#                                snp_group %in% c("E", "R") ~ "ER",
+#                                snp_group %in% c("O", "B") ~ "OB",
+#                                TRUE ~ snp_group))
 ```
 
 ```{r}
@@ -404,7 +679,7 @@ the correlation of the "annual" variables
 ```{r}
 test_clim <- clim[, c(1,7,12)]
 pdf("/data/projects/rob/data/kmers/gea/annual_climate_correlation.pdf")
-pairs.panels(test_clim, hist.col = "royalblue", ellipses = F)
+cor.plot(test_clim)
 # legend(1, pch = c(0:5), legend = levels(as.factor(clim$snp_group)))
 dev.off()
 ```
@@ -507,7 +782,7 @@ ggplot(data = africa) +
 
 ```{r}
 submat1 <- submat
-rownames(submat1) <- gsub("_.+", "", rownames(submat1))
+# rownames(submat1) <- gsub("_.+", "", rownames(submat1))
 submat1 <- submat1[rownames(submat1) %in% rownames(clim),]
 ```
 
@@ -521,7 +796,7 @@ k <- 5 # based on pcadapt and snmf results
 suball_lfmm <- lfmm_ridge(Y = submat1, X = clim[, 1:20], K = k)
 pv <- lfmm_test(Y = submat1, X = clim[, 1:20], 
                 lfmm = suball_lfmm, 
-                calibrate = "median+MAD")
+                calibrate = "gif")
 hist(pv$calibrated.pvalue)
 
 test_lffm_res <- "./gea/test_lfmm_results.pdf"
@@ -783,17 +1058,18 @@ cand_kmers <- rowSums(do.call(cbind, lapply(expect, function(i) {
 gather all the lfmm results for all the k-mer batches using the log files (faster i think)
 
 ```{r}
-log_K5 <- "./gea/lfmm/log_K5"
-log_files <- list.files(log_K5, pattern = ".log", full.names = T)
+log_K5 <- "./gea/lfmm_rda/log"
+log_files <- list.files(log_K5, pattern = "slurm-gea_af_all_\\d+.log", full.names = T)
 n <- length(log_files)
 
 cand_kmers <- rowSums(do.call(cbind, lapply(1:n, function(i) {
   cat(i, "\n")
-  df <- fread(log_files[i], skip = 10, nrows = 20, sep = " ", 
-              select = c(7, 9), col.names = c("var", i),
+  df <- fread(log_files[i], skip = 11, nrows = 19, sep = "\t", 
+              # select = c(7, 9), col.names = c("var", i),
               data.table = FALSE)
-  df <- df %>% column_to_rownames("var")
-  if (rownames(df)[20] == "elevation") {cat(i, "\n")}
+  # df$variable <- colnames(pv$calibrated.pvalue)
+  df <- df %>% column_to_rownames("variable")
+  # if (rownames(df)[20] == "elevation") {cat(i, "\n")}
   return(df)
   })
   ))
@@ -848,44 +1124,272 @@ cand_kmers <- rowSums(do.call(cbind, lapply(expect, function(i) {
 })))
 ```
 
+
 ### RDA
 
 ```{r}
-sub_rda <- rda(submat1 ~ ., data = clim[, 1:20], scale = T)
-summary(sub_rda)$concont
+sub_rda <- rda(submat1 ~ ., data = clim)
+sub_rda_sum <- summary(sub_rda)
+sub_rda_sum
 RsquareAdj(sub_rda)
 screeplot(sub_rda)
 vif.cca(sub_rda)
 plot(sub_rda, scaling = 3)
+axis_test <- anova(sub_rda, by = "axis")
+# anova.cca(sub_rda, step = 100, by = "axis")
 ```
+22% genetic variance is explained by genetic structure
+32% explained by environment variables
 
-```{r}
-load_rda <- summary(sub_rda)$species[,1:2]
-hist(load_rda[,1])
-hist(load_rda[,2])
-```
 
+#### select candidate kmers as suggested in here https://bookdown.org/hhwagner1/LandGenCourse_book/WE_11.html
 ```{r}
+kmer_loads <- summary(sub_rda)$species
+hist(kmer_loads[,1])
+hist(kmer_loads[,2])
+
 outliers <- function(x,z){
   lims <- mean(x) + c(-1, 1) * z * sd(x)     # find loadings +/-z sd from mean loading     
   x[x < lims[1] | x > lims[2]]               # locus names in these tails
 }
 
-cand1 <- outliers(load_rda[,1], 2)
-length(cand1)
-cand2 <- outliers(load_rda[,2], 2)
-length(cand2)
-signif_rda <- unique(names(c(cand1, cand2)))
+cand_rda1 <- outliers(kmer_loads[,1], 2)
+length(cand_rda1)
+cand_rda2 <- outliers(kmer_loads[,2], 2)
+length(cand_rda2)
+signif_rda1 <- unique(unlist(lapply(1:4, function(v) {
+  cand <- outliers(kmer_loads[,v], 2.5)
+  return(names(cand))
+})))
+length(signif_rda1)
+
+p <- pnorm(kmer_loads[,1], mean = mean(kmer_loads[,1]), sd = sd(kmer_loads[,1]), lower.tail = T)
+signif_rda1 <- unique(unlist(lapply(1:4, function(v) {
+  kmer_test <- kmer_loads[,v]
+  p <- pnorm(kmer_test, mean = mean(kmer_test), sd = sd(kmer_test), lower.tail = T)
+  cand <- names(kmer_test)[p < 0.05]
+  return(cand)
+})))
+length(signif_rda1)
 ```
 
--> 132070 candidate k-mers
+-> 183,555 candidate k-mers
+-> 45% genetic variance is explained by environment variables
+
+#### use mahalanobis method to select candidate kmers
 
 ```{r}
-length(signif_pca2[signif_pca2 %in% signif_rda])
-length(signif_rda[signif_rda %in% signif_pca2])
+set.seed(5)
+sub_loads <- as.data.frame(rda$CCA$v[,1:2])
+dfree <- ncol(sub_loads) - 1
+sub_loads$mahalnobis <- mahalanobis(sub_loads, colMeans(sub_loads), cov(sub_loads))
+gif <- median(sub_loads$mahalnobis)/(dfree*(1-2/(9*dfree))**3) #median(rchisq(n = nrow(sub_loads), df = dfree))
+sub_loads$mahalnobis_gif <- sub_loads$mahalnobis**2/gif
+# hist(sub_loads$mahalnobis_gif)
+sub_loads$pvalue <- pchisq(sub_loads$mahalnobis_gif, df = dfree, lower.tail = FALSE)
+# hist(sub_loads$pvalue)
+sub_qvalue <- qvalue(sub_loads$pvalue, fdr.level = 0.01, pfdr = F)
+signif_rda2 <- rownames(sub_loads)[sub_qvalue$significant]
+length(signif_rda2)
+
+signif_rda2 <- rownames(sub_loads)[sub_loads$pvalue < 0.01]
+length(signif_rda2)
+
+sub_loads$pvalue <- pchisq(sub_loads$mahalnobis, df = dfree, lower.tail = FALSE)
+signif_rda2 <- rownames(sub_loads)[sub_loads$pvalue < 0.05]
+length(signif_rda2)
+
+sub_loads$pvalue <- pchisq(sub_loads$mahalnobis, df = dfree, lower.tail = FALSE)
+sub_qvalue <- qvalue(sub_loads$pvalue, fdr.level = 0.01, pfdr = T)
+signif_rda2 <- rownames(sub_loads)[sub_qvalue$significant]
+length(signif_rda2)
 ```
 
--> only 40835 common k-mers
+-> 178,856 candidate k-mers
+
+
+#### rdadapt method
+
+```{r}
+rdadapt<-function(rda,K)
+{
+zscores<-rda$CCA$v[,1:as.numeric(K)]
+resscale <- apply(zscores, 2, scale)
+resmaha <- covRob(resscale, distance = TRUE, na.action= na.omit, estim="pairwiseGK")$dist
+lambda <- median(resmaha)/qchisq(0.5,df=K)
+reschi2test <- pchisq(resmaha/lambda,K,lower.tail=FALSE)
+qval <- qvalue(reschi2test)
+q.values_rdadapt<-qval$qvalues
+return(data.frame(p.values=reschi2test, q.values=q.values_rdadapt))
+}
+signif_rdadapt <- rdadapt(sub_rda, 2)
+hist(signif_rdadapt$p.values)
+signif_rda3 <- rownames(sub_rda$CCA$v)[signif_rdadapt$q.values < 0.01]
+length(signif_rda3)
+```
+
+#### Compare with LFMM result
+```{r}
+signif_lfmm <- fread("/shared/projects/most_kmer/afterkiss/gea/lfmm/out_K5/4_15/candidates_kmers.csv")
+nrow(signif_lfmm)
+length(signif_rda1[signif_rda1 %in% signif_lfmm$sequence])/nrow(signif_lfmm)
+length(signif_rda2[signif_rda2 %in% signif_lfmm$sequence])/nrow(signif_lfmm)
+length(signif_rda3[signif_rda3 %in% signif_lfmm$sequence])/nrow(signif_lfmm)
+```
+
+-> LFMM: 53,118 k-mers
+-> LFMM + RDA1 -> 10,075 k-mers
+-> LFMM + RDA2 -> 9,804 k-mers
+
+### partial RDA
+
+```{r}
+## PCA
+sub_pca <- rda(submat1, scale = F)
+screeplot(sub_pca)
+sub_cont <- scores(sub_pca, choices = 1:2, display = "sites")
+
+test_clim <- cbind(clim, sub_cont)
+pairs.panels(test_clim, hist.col = "royalblue", ellipses = F)
+test_clim <- as.data.frame(scale(test_clim))
+
+sub_prda <- rda(submat1 ~ . - PC1 - PC2 + Condition(PC1 + PC2), 
+                data = test_clim, 
+                scale = T)
+sub_prda_sum <- summary(sub_prda)
+sub_prda_sum
+RsquareAdj(sub_prda)
+screeplot(sub_prda)
+vif.cca(sub_prda)
+plot(sub_prda, scaling = 3)
+# anova.cca(sub_rda, step = 100, by = "axis")
+```
+22% genetic variance is explained by genetic structure
+32% explained by environment variables
+
+
+```{r}
+saveRDS(sub_prda, "./gea/rda_test_sub_rda.RDS")
+sub_prda <- readRDS("./gea/rda_test_sub_rda.RDS")
+```
+
+#### select candidate kmers as suggested in here https://bookdown.org/hhwagner1/LandGenCourse_book/WE_11.html
+```{r}
+kmer_loads_prda <- summary(sub_prda)$species
+hist(kmer_loads_prda[,1])
+hist(kmer_loads_prda[,2])
+
+outliers <- function(x,z){
+  lims <- mean(x) + c(-1, 1) * z * sd(x)     # find loadings +/-z sd from mean loading     
+  x[x < lims[1] | x > lims[2]]               # locus names in these tails
+}
+
+signif_prda1 <- unique(unlist(lapply(1:5, function(v) {
+  cand <- outliers(kmer_loads_prda[,v], 2.5)
+  return(names(cand))
+})))
+length(signif_prda1)
+# cand_prda1 <- outliers(kmer_loads_prda[,1], 2)
+# length(cand_prda1)
+# cand_prda2 <- outliers(kmer_loads_prda[,2], 2)
+# length(cand_prda2)
+# signif_prda1 <- unique(names(c(cand_prda1, cand_prda2)))
+# length(signif_prda1)
+```
+
+-> 102,990 candidate k-mers
+
+#### use mahalanobis method to select candidate kmers
+
+```{r}
+sub_loads_prda <- as.data.frame(sub_prda_sum$species)[,1:2]
+dfree <- ncol(sub_loads_prda) - 1
+sub_loads_prda$mahalnobis <- mahalanobis(sub_loads_prda, colMeans(sub_loads_prda), cov(sub_loads_prda))
+gif <- median(sub_loads_prda$mahalnobis)/(dfree*(1-2/(9*dfree))**3) #median(rchisq(n = nrow(sub_loads_prda), df = dfree))
+sub_loads_prda$mahalnobis_gif <- sub_loads_prda$mahalnobis**2/gif
+# hist(sub_loads_prda$mahalnobis_gif)
+sub_loads_prda$pvalue <- pchisq(sub_loads_prda$mahalnobis_gif, df = dfree, lower.tail = FALSE)
+# hist(sub_loads_prda$pvalue)
+sub_qvalue <- qvalue(sub_loads_prda$pvalue, fdr.level = 0.01, pfdr = T)
+signif_prda2 <- rownames(sub_loads_prda)[sub_qvalue$significant]
+length(signif_prda2)
+```
+-> 51,307 candidate kmers
+
+
+#### rdadapt method
+```{r}
+rdadapt<-function(rda,K)
+{
+zscores<-rda$CCA$v[,1:as.numeric(K)]
+resscale <- apply(zscores, 2, scale)
+resmaha <- covRob(resscale, distance = TRUE, na.action= na.omit, estim="pairwiseGK")$dist
+lambda <- median(resmaha)/qchisq(0.5,df=K)
+reschi2test <- pchisq(resmaha/lambda,K,lower.tail=FALSE)
+qval <- qvalue(reschi2test)
+q.values_rdadapt<-qval$qvalues
+return(data.frame(p.values=reschi2test, q.values=q.values_rdadapt))
+}
+signif_prdadapt <- rdadapt(sub_prda, 2)
+hist(signif_prdadapt$p.values)
+signif_prda3 <- rownames(sub_loads_prda)[signif_prdadapt$q.values < 0.05]
+length(signif_prda3)
+```
+
+
+#### Compare with LFMM result
+```{r}
+signif_lfmm <- fread("/shared/projects/most_kmer/afterkiss/gea/lfmm/out_K5/4_15/candidates_kmers.csv")
+nrow(signif_lfmm)
+length(signif_prda1[signif_prda1 %in% signif_lfmm$sequence])
+length(signif_prda2[signif_prda2 %in% signif_lfmm$sequence])/nrow(signif_lfmm)
+length(signif_prda3[signif_prda3 %in% signif_lfmm$sequence])/nrow(signif_lfmm)
+```
+-> RDA is better than partial RDA (more common kmers with LFMM), it was also shown on published papers.
+
+
+#### Gather all RDA runs
+```{bash}
+cd /shared/projects/most_kmer/afterkiss/gea/rda
+candfiles=$(ls out_2.5sd/*/candidates_rda.txt)
+echo -e "sequence\tkmer_nb\tbed_file" > significant_kmers_rda.txt
+for f in $candfiles; do echo $f; cat $f | cut -f3,2,1 | sed -n '1d;p' | awk '{ print $3 "\t" $2 "\t" $1}' >> significant_kmers_rda.txt; done
+```
+-> 85,567,757 candidate kmers
+
+### Common of LFMM and RDA
+
+```{r}
+com_files <- list.files("./gea/lfmm_rda/out/4_15", "candidates_rda_lfmm.txt", 
+                        recursive = T, full.names = T)
+com <- fread(com_files[1], header = F)
+signif_mat <- submat1[,colnames(submat1) %in% com$V1]
+
+```
+
+```{r}
+log <- "./gea/lfmm_rda/log"
+log_files <- list.files(log, pattern = "slurm-gea_af_all_\\d+.log", full.names = T)
+n <- length(log_files)
+
+cand_kmers <- do.call(rbind, lapply(1:n, function(i) {
+  cat(i, "\n")
+  df <- fread(log_files[i], skip = 11, nrows = 19, sep = "\t", 
+              # select = c(7, 9), col.names = c("var", i),
+              data.table = FALSE)
+  # df <- df %>% column_to_rownames("variable")
+  return(df)
+  })
+  )
+cand_kmers <- cand_kmers %>% 
+  group_by(variable) %>% 
+  summarise(across(significant_kmers:significant_outliers, sum)) %>% 
+  dplyr::select(variable, significant_kmers) %>% 
+  arrange(desc(significant_kmers))
+
+cand_kmers <- format(as.data.frame(cand_kmers), big.mark = ",")
+```
+
 
 ## Climatic condition in Central Highlands VN
 
@@ -1027,3 +1531,30 @@ autoplot(climall_pca, x = 1, y = 3,
   scale_colour_manual(values = c(turbo(5), "black")) +
   scale_fill_manual(values = c(turbo(5), "black")) 
 ```
+
+## Genetic offset
+
+```{r}
+fut_clim <- fread("./bioclim/climatic_variables_vn_future_ipsl.csv")
+fut_clim <- fut_clim %>% 
+  relocate(str_sort(colnames(fut_clim), numeric = T)) 
+colnames(fut_clim) <- gsub("bio", "bio_", colnames(fut_clim))
+pred_clim <- matrix(rep(as.numeric(fut_clim[1,1:19]), nrow(clim)), nrow = nrow(clim), byrow = T)
+# rownames(pred_clim) <- rownames(clim)
+# colnames(pred_clim) <- colnames(clim)[1:19]
+```
+
+```{r}
+g.gap.scaled <- genetic.gap(input = signif_mat,
+                            env = matrix(unlist(clim[,1:19]), nrow = nrow(clim)),
+                            pred.env = pred_clim,
+                            scale = TRUE,
+                            K = 2)
+
+g.gap.scaled <- genetic.gap(input = signif_mat,
+                            env = X[1:57,],
+                            pred.env = X.pred[1:57,],
+                            scale = TRUE,
+                            K = 2)
+```
+

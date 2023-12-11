@@ -6,8 +6,6 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
-library(tibble)
-library(ggplot2)
 library(sf)
 library(raster)
 library(rnaturalearth)
@@ -17,11 +15,13 @@ library(viridis)
 library(data.table)
 library(superheat)
 library(cowplot)
+library(smplot2)
+library(ggpubr)
 ```
 
 ```{r}
-group_col <- c("#30123BFF", "#28BBECFF", "#A2FC3CFF", "#FB8022FF", "#7A0403FF", "gray", "gray", "gray40")
-names(group_col) <- c("ER", "OB", "C", "AG", "D", "admixed", "Vietnam", "Vietnam 2041-2070")
+group_col <- c("#30123BFF", "#28BBECFF", "#94e637", "#FB8022FF", "#7A0403FF", "gray", "gray50", "black")
+names(group_col) <- c("ER", "OB", "C", "AG", "D", "admixed", "VN present (1970-2000)", "VN future (2041-2060)")
 
 group_col_af <- c("#30123BFF", "#28BBECFF", "#A2FC3CFF", "#FB8022FF", "#7A0403FF", "gray")
 names(group_col_af) <- c("ER", "OB", "C", "AG", "D", "hybrid")
@@ -31,7 +31,7 @@ names(group_col_af) <- c("ER", "OB", "C", "AG", "D", "hybrid")
 
 ```{r}
 # vn_clim_file <- "../bioclim/climatic_variables_vn_chelsa.csv"
-vn_clim_file <- "../bioclim/climatic_variables_vn_wc2.1.csv"
+vn_clim_file <- "../bioclim/climatic_variables_640districts_VN_wc2.1.csv"
 vn_clim <- read.csv(vn_clim_file)
 unique(vn_clim$province)
 ## robusta is supposed to be grown mainly in most of provinces in the central highlands except for Lam Dong where arabica is grown
@@ -41,8 +41,23 @@ rob_ch_clim <- vn_clim %>%
   dplyr::rename(group = snp_group)
 ```
 
+show central highlands
+```{r}
+vn <- getData("GADM", country = "VN", level = 1)
+vn_pol <- st_as_sf(vn)
+
+district <- getData("GADM", country = "VN", level = 2)
+dt_pol <- st_as_sf(district)
+dt_pol <- dt_pol[dt_pol$NAME_1 %in% c(rob_ch_clim$province, "Lâm Đồng"),]
+
+ggplot() +
+  geom_sf(data = dt_pol, fill = "#77a37b", color = "#77a37b", size = 0.3) +
+  geom_sf(data = vn_pol, fill = NA, color = "#255429", size = 0.3) + 
+  theme_void()
+```
 
 show the occurrences on maps
+
 ```{r}
 vn <- getData("GADM", country = "VN", level = 1)
 vn_pol <- st_as_sf(vn)
@@ -69,10 +84,18 @@ ggplot() +
   geom_sf(data = vn_pol, fill = NA, color = "#255429") + 
   geom_point(data = rob_ch_clim, 
              aes(x = Long, y = Lat), 
-             color = "gray40") +
+             color = "gray10") +
   theme_void() + 
   # ylim(c(11, 16)) + xlim(c(106, 110)) +
   scale_shape_manual(values = c(0:3, 8, 10))
+```
+
+```{r}
+vn_map <- st_as_sf(vn)
+ggplot() +
+  geom_sf(data = vn_map, fill = NA, color = "gray50", size = 0.3) + 
+  geom_sf(data = vn_pol, fill = "gray", color = "gray50", size = 0.3) +
+  theme_void()
 ```
 
 ## Project VN bioclim data to PCA of African bioclim
@@ -80,17 +103,24 @@ ggplot() +
 ```{r}
 af_clim_file <- "../bioclim/climatic_variables_af_wc2.1.csv"
 # af_clim_file <- "../bioclim/climatic_variables_af_chelsa.csv"
-af_clim <- read.csv(af_clim_file)
-af_clim <- af_clim %>% 
-  # select(1:20) %>% 
-  column_to_rownames("Label") %>% 
-  dplyr::rename(group = snp_group) %>% 
-  filter(group != "hb") %>% 
-  mutate(group = case_when(group %in% c("A", "G") ~ "AG",
-                           group %in% c("E", "R") ~ "ER",
-                           group %in% c("O", "B") ~ "OB",
-                           # group == "hb" ~ "admixed",
-                           TRUE ~ group)) 
+allaf_clim <- read.csv(af_clim_file)
+# af_clim <- af_clim %>% 
+#   # select(1:20) %>% 
+#   column_to_rownames("Label") %>% 
+#   dplyr::rename(group = snp_group) %>% 
+#   filter(group != "hb") %>% 
+#   mutate(group = case_when(group %in% c("A", "G") ~ "AG",
+#                            group %in% c("E", "R") ~ "ER",
+#                            group %in% c("O", "B") ~ "OB",
+#                            # group == "hb" ~ "admixed",
+#                            TRUE ~ group)) 
+
+snmf_assign <- read.csv("../af_samples_ancestry_kmers.csv")
+allaf_clim <- left_join(allaf_clim, snmf_assign, by = "Label") %>% 
+  # dplyr::rename(group = assign) %>% 
+  column_to_rownames("Label")
+af_clim <- allaf_clim %>% 
+  filter(group != "hybrid")
 ```
 
 ```{r}
@@ -102,17 +132,19 @@ rbind(af_clim %>% dplyr::select(1:19, group),
   ggplot() +
   facet_wrap(~ variable, ncol = 5, scale = "free") +
   geom_density(aes(value, color = group, fill = group), alpha = 0.5) +
-  scale_color_manual(values = group_col[-6]) +
-  scale_fill_manual(values =  group_col[-6]) +
+  scale_color_manual(values = group_col[-c(6,8)]) +
+  scale_fill_manual(values =  group_col[-c(6,8)]) +
   theme_minimal()
-  
 ```
-
 
 ```{r}
 afclim_pca <- prcomp(af_clim[,1:19], scale. = T)
 summary(afclim_pca)
-ggbiplot::ggscreeplot(afclim_pca) + theme_minimal()
+var_plot <- ggbiplot::ggscreeplot(afclim_pca) + 
+  theme_minimal() +
+  theme(axis.title = element_text(size = 14)) +
+  ylab("Proportion of explained variance") +
+  xlab("Principal component number")
 autoplot(afclim_pca, x = 1, y = 2,
          data = af_clim, colour = 'group', size = 2,
          loadings = TRUE, loadings.colour = 'blue',
@@ -125,7 +157,22 @@ autoplot(afclim_pca, x = 1, y = 2,
 
 ```
 
+contribution of bioclim vars
 
+```{r}
+## contribution on the first 2 PCs
+sort(sqrt(afclim_pca$rotation[,1]^2+afclim_pca$rotation[,2]^2))
+## percentage
+eig <- abs(afclim_pca$rotation)
+## contribution on PC1
+sort(eig[,1]/sum(eig[,1]))
+## contribution on PC2
+sort(eig[,2]/sum(eig[,2]))
+## contribution of temp vars (bio1-bio11) on PC1
+sum(eig[1:11,1]/sum(eig[,1]))
+## contribution of temp vars (bio1-bio11) on PC1
+sum(eig[1:11,2]/sum(eig[,2]))
+```
 
 ```{r}
 all_clim <- bind_rows(af_clim %>% dplyr::select(1:20, group) %>% mutate(province = "Africa"),
@@ -138,23 +185,40 @@ climproj <- afclim_pca
 climproj$x <- rbind(climproj$x, vnclim_pd)
 climproj_mp <- cbind(climproj$x,
                     all_clim %>% 
-                      # filter(group != "Vietnam") %>% 
-                      select(province, district, group)) %>%
+                      dplyr::select(province, district, group)) %>%
   mutate(district = if_else(is.na(district), group, district)) %>% 
   group_by(district, group) %>% 
   summarise(across(PC1:PC19, mean))
-autoplot(climproj, x = 1, y = 2,
-         data = all_clim, colour = 'group', size = 2, 
-         shape = 1,
+vn_prs12 <- autoplot(climproj, x = 1, y = 2,
+         data = all_clim, colour = 'group', size = 1, 
+         shape = 16,
          # shape = 'province',
-         loadings = TRUE, loadings.colour = 'blue',
-         loadings.label = TRUE, loadings.label.size = 6,
+         loadings = F, loadings.colour = 'blue',
+         loadings.label = F, loadings.label.size = 4,
          loadings.label.repel = T,
          loadings.label.colour = "blue", frame = T) +
   theme_minimal() + 
-  scale_colour_manual(values = group_col[-c(6, 8)]) +
-  scale_fill_manual(values = group_col[-c(6, 8)]) +
-  scale_shape_manual(values = c(16, 0:3, 8, 10), name = "location")
+  theme(axis.title = element_text(size = 14)) +
+  scale_colour_manual(values = c(group_col[1:5], "Vietnam" = "gray50")) +
+  scale_fill_manual(values = c(group_col[1:5], "Vietnam" = "gray50")) +
+  xlab("PC1 (36.7%)")
+
+vn_prs13 <- autoplot(climproj, x = 1, y = 3,
+         data = all_clim, colour = 'group', size = 1, 
+         shape = 16,
+         # shape = 'province',
+         loadings = F, loadings.colour = 'blue',
+         loadings.label = F, loadings.label.size = 4,
+         loadings.label.repel = T,
+         loadings.label.colour = "blue", frame = T) +
+  theme_minimal() + 
+  theme(axis.title = element_text(size = 14)) +
+  scale_colour_manual(values = c(group_col[1:5], "Vietnam" = "gray50")) +
+  scale_fill_manual(values = c(group_col[1:5], "Vietnam" = "gray50")) +
+  xlab("PC1 (36.7%)") + ylab("PC3 (18.2%)")
+  # scale_shape_manual(values = c(16, 0:3, 8, 10), name = "location") 
+  # ggtitle("Present climate")
+  # ggtitle("Projection of VN present bioclimate \non PCA of African present bioclimate")
 
 autoplot(climproj, x = 1, y = 2,
          data = all_clim, colour = 'group', size = 2, 
@@ -174,7 +238,6 @@ autoplot(climproj, x = 1, y = 2,
   scale_shape_manual(values = c(16, 0:3, 8, 10), name = "location")
 ```
 
-
 ## Climate distance in present
 
 ```{r}
@@ -184,7 +247,6 @@ euclidist <- function(x) {
 }
 euclidist(c(3,4))
 ```
-
 
 central point of each district to central point of African group
 
@@ -226,8 +288,22 @@ ggplot(occ_group_dist) +
   scale_shape_manual(values = c(0:3, 8, 10)) + 
   theme_minimal() + 
   theme(axis.text.x = element_text(angle = 90, h = 1))
-```
 
+ggplot(occ_group_dist) + 
+  # facet_grid(cols = vars(province), scales = "free", space = "free") + 
+  geom_point(aes(x = district, y = euclidean_distance, 
+                 color = group), size = 2) +
+  geom_line(aes(x = district, y = euclidean_distance, 
+                 color = group, group = group)) +
+  scale_color_manual(values = group_col[1:5]) +
+  scale_shape_manual(values = c(0:3, 8, 10)) + 
+  theme_minimal() + 
+  theme(axis.text.x = element_blank(),
+        axis.title = element_text(size = 14)) +
+  xlab("District") +
+  ylab("Climate distance")
+
+```
 
 ## correlation between yield and climate distance in present
 ```{r}
@@ -245,7 +321,6 @@ ggplot(dist_yield) +
   theme(axis.text.x = element_text(angle = 90, h = 1))
 ```
 
-
 ```{r}
 # correlation between yield and climate for all groups
 ggplot(dist_yield, aes(x = euclidean_distance, y = yield, color = group)) + 
@@ -261,57 +336,232 @@ dist_yield %>%
                    pvalue = cor.test(euclidean_distance, yield)$p.value)
 
 # group ER only
-ggplot(dist_yield %>% filter(group == "ER"), 
+er_cor <- ggplot(dist_yield %>% filter(group == "ER"), 
        aes(x = euclidean_distance, y = yield)) + 
   geom_point(color = group_col["ER"]) +
   geom_smooth(method = 'lm', formula = y~x, color = group_col["ER"]) + 
   theme_minimal() +
-  ylab("Yield") +
+  theme(axis.title = element_text(size = 14)) +
+  ylab("Yield (ton/ha)") +
   xlab("Climate distance")
 ```
 
-
 ## Predict future yield
 
-Future bioclim data: CMIP6, period 2041-2070, model IPSL-CM6A-LR, pathway ssp585, resolution 30s
+Future bioclim [data:\\](data:\){.uri} - GCM: CNRM-CM6-1, EC-Earth3-Veg\
+- SSPs: ssp126, ssp585\
+- period: 2041-2070\
+- res: 30s
 
 ```{r}
-bc_future_vn <- read.csv("../bioclim/climatic_variables_vn_wc2.1_MIROC6_ssp585_2041-2060.csv")
+future_data <- list.files("../bioclim", "wc2.1_30s_bioc_.+_2041-2060_640occ_VN.csv", full.names = T)
+for (f in future_data) {
+  bc_future_vn <- read.csv(f)
+  bc_future_vn <- bc_future_vn %>% 
+    filter(district %in% dist_yield$district)
+  write.csv(bc_future_vn, gsub("VN", "640districts_VN", f), row.names = F, quote = F)
+}
+
+# vn_clim_file <- "../bioclim/climatic_variables_vn_wc2.1.csv"
+# vn_clim <- read.csv(vn_clim_file)
+# vn_clim <- vn_clim %>% 
+#   filter(district %in% dist_yield$district)
+# write.csv(vn_clim, gsub("vn", "640districts_VN", vn_clim_file), row.names = F, quote = F)
+```
+
+```{r}
+predict_yield <- function(future_file, all_clim, climproj, yield_lm, current_yield, map) {
+  ## get future bioclim data
+  bc_future_vn <- read.csv(future_file)
+  bc_future_vn <- bc_future_vn %>% 
+    column_to_rownames("Label") %>% 
+    filter(!province %in% c("Lâm Đồng", "Bình Định", "Bình Phước", "Khánh Hòa")) %>% 
+    dplyr::rename(group = snp_group) %>% 
+    dplyr::select(starts_with("bio"), group, province, district)
+  all_clim$group[all_clim$group == "Vietnam"] <- "VN present (1970-2000)"
+  prs_fut_clim <- bind_rows(all_clim %>% rownames_to_column("Label"),
+                            bc_future_vn %>% mutate(group = "VN future (2041-2060)") %>% rownames_to_column("Label"))
+  
+  ## project future data on pca of african present data
+  futclim_sc <- scale(bc_future_vn[,1:19], 
+                      center = climproj$center)
+  futclim_pd <- futclim_sc %*% climproj$rotation
+  futclimproj <- climproj
+  futclimproj$x <- rbind(futclimproj$x, futclim_pd)
+  # futclimproj$x <- futclimproj$x[grepl("occ", rownames(futclimproj$x)),]
+  title <- gsub("wc2.1_30s_bioc_|_2041-2060_640occ_VN.csv", "", basename(future_file))
+  title <- gsub("_", ", ", title)
+  fut_project <- autoplot(futclimproj, x = 1, y = 2,
+             data = prs_fut_clim, 
+             colour = 'group', size = 1,
+             alpha = 'group',
+             shape = 16,
+             # shape = 'province', 
+             loadings = F, loadings.colour = 'blue',
+             loadings.label = F, 
+             frame.alpha = 0.1,
+             frame = T) +
+      theme_minimal() + 
+      theme(plot.title = element_text(hjust = 0.5, size = 16), 
+            # axis.title = element_text(size = 12),
+            legend.position = "none") +
+      scale_colour_manual(values = group_col[-c(6)]) +
+      scale_fill_manual(values = group_col[-c(6)]) +
+      scale_alpha_manual(values = c(rep(0, 5), 1, 1)) +
+      # scale_shape_manual(values = c(16, 0:3, 8, 10), name = "location") +
+      ggtitle(title)
+  
+  ## future climate distance
+  mean_district_fut <- futclim_pd %>% 
+    as.data.frame() %>% 
+    dplyr::select(PC1:PC5) %>% 
+    rownames_to_column("id") %>% 
+    mutate(district = bc_future_vn$district,
+           province = bc_future_vn$province) %>% 
+    pivot_longer(cols = PC1:PC5, names_to = "PC") %>% 
+    group_by(district, province, PC) %>% 
+    dplyr::summarise(mean_occ = mean(value), .groups = "drop")
+  
+  fut_dist <- full_join(mean_district_fut, 
+                           group_mean, 
+                           by = "PC") %>% 
+    # filter(PC %in% c("PC1", "PC2")) %>% 
+    mutate(distance = mean_occ - mean_group) %>% 
+    group_by(district, province, group) %>% 
+    dplyr::summarise(fut_euclidean_distance = euclidist(distance), .groups = "drop") %>% 
+    arrange(province, district) %>% 
+    mutate(district = factor(district, levels = unique(district))) %>% 
+    filter(district %in% yield$district)
+  
+  fut_dist <- left_join(fut_dist, 
+                        dist_yield, 
+                        by = c("district", "province", "group")) %>% 
+    mutate(clim_change = fut_euclidean_distance - euclidean_distance,
+           scenario = title)
+  
+  clim_change <- ggplot(fut_dist, aes(x = district, y = clim_change, color = group, group = group)) + 
+    geom_point(size = 2) +
+    geom_line() +
+    scale_color_manual(values = group_col[1:5]) +
+    theme_minimal() + 
+    theme(axis.text.x = element_blank(),
+          axis.title = element_text(size = 15),
+          plot.title = element_text(hjust = 0, size = 20)) + 
+    xlab("District") +
+    ylab("Change in climate distance") +
+    ggtitle(title)
+  
+  fut_ER_dist <- full_join(mean_district_fut, 
+                           group_mean %>% filter(group == "ER"), 
+                           by = "PC") %>% 
+    # filter(PC %in% c("PC1", "PC2")) %>% 
+    mutate(distance = mean_occ - mean_group) %>% 
+    group_by(district, province, group) %>% 
+    dplyr::summarise(euclidean_distance = euclidist(distance), .groups = "drop") %>% 
+    arrange(province, district) %>% 
+    mutate(district = factor(district, levels = unique(district))) %>% 
+    filter(district %in% yield$district)
+  
+  ## future yield
+  distER_yield <- dist_yield %>% filter(group == "ER")
+  pred_yield <- predict.lm(yield_lm, fut_ER_dist %>% dplyr::select(euclidean_distance),
+                           interval = "confidence")
+  fut_ER_dist <- cbind(fut_ER_dist, pred_yield)
+  
+  pred_yield_change <- left_join(distER_yield %>% 
+                                   dplyr::rename(present_yield = yield,
+                                                 present_clim_dist = euclidean_distance),
+                                 fut_ER_dist %>% 
+                                   dplyr::rename(future_yield = fit,
+                                                 future_clim_dist = euclidean_distance),
+                                 by = c("district", "province", "group")) %>% 
+    mutate(clim_change = (future_clim_dist - present_clim_dist), #/present_clim_dist*100,
+           yield_change = (future_yield - present_yield), #/present_yield*100,
+           yield_change_lwr = (lwr - present_yield), #/present_yield*100,
+           yield_change_upr = (upr - present_yield)) %>%  #/present_yield*100) %>% 
+    mutate(change = if_else(yield_change < 0, "decrease", "increase")) %>% 
+    arrange(yield_change) %>%
+    mutate(district = factor(district, levels = district))
+  
+  pred_yield_plot <- ggplot(pred_yield_change, aes(x = district, y = yield_change)) + 
+    geom_col(aes(fill = yield_change/present_yield*100), color = "gray", 
+             width = 0.6, show.legend = F) + 
+    geom_errorbar(aes(ymin = yield_change_lwr, ymax = yield_change_upr), width = 0.3) +
+    theme_minimal() + 
+    theme(axis.text.x = element_blank(),
+          axis.title = element_text(size = 15),
+          plot.title = element_text(hjust = 0, size = 20)) + 
+    xlab("District") +
+    ylab("Change in yield (ton/ha)") +
+    # ylim(c(-1.2, 1.5)) +
+    scale_y_continuous(limits = c(-1.2, 1.5), expand = c(0, 0)) +
+    # scale_fill_manual(values = c("#c4b256", "#58875d")) +
+    scale_fill_gradientn(colors = c("#c9ab12", "#d4c266", "white", "#83c78a", "#4d9454", "#2d6b34", "#1a451f"),
+                         limit = c(-50, 100),
+                         guide = guide_colorbar(title = "% Change")) +
+    ggtitle(title)
+    # ggtitle(paste0("Prediction of yield in years 2041-2060 (", title, ")"))
+  
+  total_yield <- (colSums(pred_yield) - sum(current_yield$yield))/sum(current_yield$yield)*100
+  
+  # yield_change_map <- right_join(map, pred_yield_change, by = c("district", "province")) %>%
+  #   mutate(yield_change = yield_change/present_yield*100) %>%
+  #   ggplot() +
+  #   geom_sf(data = dt_pol, fill = "white", color = "#77a37b", size = 0.3) +
+  #   geom_sf(data = vn_pol, fill = NA, color = "#255429") +
+  #   geom_point(aes(x = Long, y = Lat, fill = yield_change), color = "black", shape = 21) +
+  #   theme_void() +
+  #   scale_fill_gradientn(colors = c("#c9ab12", "#d4c266", "white", "#83c78a", "#4d9454", "#2d6b34", "#1a451f"),
+  #                        limit = c(-50, 100),
+  #                        guide = guide_colorbar(title = "Change in  yield\n(% current yield)")) +
+  #   theme(legend.text = element_text(size = 12),
+  #         legend.title = element_text(size = 12)) +
+  #   ggtitle(title)
+  
+  yield_change_map <- ggplot() +
+    geom_sf(data = merge(dt_pol, pred_yield_change, by.x = "VARNAME_2", by.y = "district"), 
+            # fill = "white", 
+            aes(fill = yield_change/present_yield*100),
+            color = "#77a37b") +
+    geom_sf(data = vn_pol, fill = NA, color = "#255429", linewidth = .6) +
+    geom_point(data = map, aes(x = Long, y = Lat), color = "black", alpha = .3, size = 1, shape = 16) +
+    theme_void() +
+    scale_fill_gradientn(colors = c("#c9ab12", "#d4c266", "white", "#83c78a", "#4d9454", "#2d6b34", "#1a451f"),
+                         limit = c(-50, 100),
+                         guide = guide_colorbar(title = "% Change")) + # "Change in  yield\n(% current yield)"
+    theme(legend.text = element_text(size = 12),
+          legend.title = element_text(size = 12),
+          plot.title = element_text(hjust = 0.5)) 
+    # ggtitle(title)
+  
+  
+  return(list(projection = fut_project, yield = pred_yield_plot, total_yield = total_yield, map = yield_change_map,
+              climchange = fut_dist, yield_change= pred_yield_change))
+  }
+```
+
+```{r}
+future_data <- "../bioclim/wc2.1_30s_bioc_CNRM-CM6-1_ssp126_2041-2060_VN.csv"
+bc_future_vn <- read.csv(future_data)
 # colnames(bc_future_vn) <- gsub("bio", "bio_", colnames(bc_future_vn))
 # colnames(bc_future_vn) <- gsub("_2041.2070_gfdl.esm4_ssp585_V.2.1", "", colnames(bc_future_vn))
 bc_future_vn <- bc_future_vn %>% 
   column_to_rownames("Label") %>% 
   filter(!province %in% c("Lâm Đồng", "Bình Định", "Bình Phước", "Khánh Hòa")) %>% 
-  rename(group = snp_group) %>% 
-  select(starts_with("bio"), group, province, district) # %>% 
+  dplyr::rename(group = snp_group) %>% 
+  dplyr::select(starts_with("bio"), group, province, district) # %>% 
   # mutate(bio_3 = bio_3*100)
 ```
 
 ```{r}
 prs_fut_clim <- bind_rows(all_clim,
-                          bc_future_vn %>% mutate(group = "Vietnam 2041-2070"))
+                          bc_future_vn %>% mutate(group = "Vietnam 2041-2060"))
 
 futclim_sc <- scale(prs_fut_clim %>% 
-                      filter(group == "Vietnam 2041-2070") %>% 
-                      select(1:19), 
+                      filter(group == "Vietnam 2041-2060") %>% 
+                      dplyr::select(1:19), 
                     center = afclim_pca$center)
 futclim_pd <- futclim_sc %*% afclim_pca$rotation
-
-# futclimproj <- climproj
-# futclimproj$x <- rbind(futclimproj$x, futclim_pd)
-# autoplot(futclimproj, x = 1, y = 2,
-#          data = prs_fut_clim, 
-#          colour = 'group', size = 2, 
-#          # shape = 'province',
-#          loadings = TRUE, loadings.colour = 'blue',
-#          loadings.label = TRUE, loadings.label.size = 6,
-#          loadings.label.repel = T,
-#          loadings.label.colour = "blue", frame = T) +
-#   theme_minimal() + 
-#   scale_colour_manual(values = group_col[-6]) +
-#   scale_fill_manual(values = group_col[-6]) +
-#   scale_shape_manual(values = c(16, 0:3, 8, 10), name = "location")
-
 
 
 futclimproj <- afclim_pca
@@ -319,7 +569,7 @@ futclimproj$x <- rbind(futclimproj$x, futclim_pd)
 mid_points <- cbind(futclimproj$x,
                     prs_fut_clim %>% 
                       filter(group != "Vietnam") %>% 
-                      select(province, district, group)) %>%
+                      dplyr::select(province, district, group)) %>%
   mutate(district = if_else(is.na(district), group, district)) %>% 
   group_by(district, group) %>% 
   summarise(across(PC1:PC19, mean))
@@ -335,7 +585,10 @@ autoplot(futclimproj, x = 1, y = 2,
   theme_minimal() + 
   scale_colour_manual(values = group_col[-c(6, 7)]) +
   scale_fill_manual(values = group_col[-c(6, 7)]) +
-  scale_shape_manual(values = c(16, 0:3, 8, 10), name = "location")
+  scale_shape_manual(values = c(16, 0:3, 8, 10), name = "location") +
+  ggtitle(paste0("Projection of VN future bioclimate (", 
+                gsub("wc2.1_30s_bioc_|_2041-2060_VN.csv", "", basename(future_data)), 
+                ")\non PCA of African present bioclimate"))
 
 autoplot(futclimproj, x = 1, y = 2,
          data = prs_fut_clim %>% filter(group != "Vietnam"), 
@@ -362,7 +615,6 @@ ggplot(data = mid_points) +
   scale_color_manual(values = group_col[-c(6, 7)])
 ```
 
-
 Predict future yield
 
 ```{r}
@@ -377,8 +629,8 @@ mean_district_fut <- futclim_pd %>%
   dplyr::summarise(mean_occ = mean(value), .groups = "drop")
 
 fut_ER_dist <- full_join(mean_district_fut, 
-                            group_mean %>% filter(group == "ER"), 
-                            by = "PC") %>% 
+                         group_mean %>% filter(group == "ER"), 
+                         by = "PC") %>% 
   # filter(PC %in% c("PC1", "PC2")) %>% 
   mutate(distance = mean_occ - mean_group) %>% 
   group_by(district, province, group) %>% 
@@ -390,25 +642,25 @@ fut_ER_dist <- full_join(mean_district_fut,
 distER_yield <- dist_yield %>% filter(group == "ER")
 yd_rel <- lm(yield ~ euclidean_distance, data = distER_yield)
 
-pred_yield <- predict.lm(yd_rel, fut_ER_dist %>% select(euclidean_distance),
-                                   interval = "confidence")
+pred_yield <- predict.lm(yd_rel, fut_ER_dist %>% dplyr::select(euclidean_distance),
+                         interval = "confidence")
 fut_ER_dist <- cbind(fut_ER_dist, pred_yield)
 
-left_join(distER_yield %>% 
-            rename(present_yield = yield,
+yield_change <- left_join(distER_yield %>% 
+            dplyr::rename(present_yield = yield,
                    present_clim_dist = euclidean_distance),
-      fut_ER_dist %>% 
-        rename(future_yield = fit,
-               future_clim_dist = euclidean_distance),
-      by = c("district", "province", "group")) %>% 
+          fut_ER_dist %>% 
+            dplyr::rename(future_yield = fit,
+                          future_clim_dist = euclidean_distance),
+          by = c("district", "province", "group")) %>% 
   mutate(clim_change = (future_clim_dist - present_clim_dist)/present_clim_dist*100,
          yield_change = (future_yield - present_yield)/present_yield*100,
          yield_change_lwr = (lwr - present_yield)/present_yield*100,
          yield_change_upr = (upr - present_yield)/present_yield*100) %>% 
   mutate(change = if_else(yield_change < 0, "decrease", "increase")) %>% 
   arrange(yield_change) %>%
-  mutate(district = factor(district, levels = district)) %>% 
-  ggplot(aes(x = district, y = yield_change)) + 
+  mutate(district = factor(district, levels = district))
+ggplot(yield_change, aes(x = district, y = yield_change)) + 
   geom_col(aes(fill = change), width = 0.6, show.legend = F) + 
   geom_errorbar(aes(ymin = yield_change_lwr, ymax = yield_change_upr), width = 0.3) +
   theme_minimal() + 
@@ -419,29 +671,1397 @@ left_join(distER_yield %>%
   scale_fill_manual(values = c("#eb5752", "#7eb2f2")) 
 ```
 
-
 ```{r}
 # change in total yield
 (colSums(pred_yield) - sum(yield$yield))/sum(yield$yield)*100
 ```
 
 ```{r}
-rob_ch_clim_fut <- right_join(rob_ch_clim, fut_ER_dist, by = c("district", "province")) %>%
-  mutate(change = if_else(yield_change < 0, "decrease", "increase"))
+pred <- predict_yield(future_file = future_data, 
+                      af_clim_pca = afclim_pca, 
+                      yield_lm = yd_rel,
+                      current_yield = yield %>% filter(district %in% rob_ch_clim$district),
+                      map = rob_ch_clim)
+
+future_data <- list.files("../bioclim", "wc2.1_30s_bioc_.+_2041-2060_640occ_VN.csv", full.names = T)
+
+
+distER_yield <- dist_yield %>% filter(group == "ER")
+yd_rel <- lm(yield ~ euclidean_distance, data = distER_yield)
+future_yield_pred <- lapply(future_data, function(f) {
+  pred <- predict_yield(future_file = f, 
+                        all_clim = all_clim, 
+                        climproj = climproj,
+                        yield_lm = yd_rel,
+                        current_yield = yield %>% filter(district %in% rob_ch_clim$district),
+                        map = rob_ch_clim)
+  return(pred)
+})
+```
+
+
+significance between climate distance of 5 groups
+```{r}
+fut_mean_dist <- do.call(rbind, lapply(future_yield_pred, function(f) {
+  df <- f$climchange # %>% 
+    group_by(scenario, group) %>%
+    summarise(mean_dist = mean(fut_euclidean_distance),
+           sd_dist = sd(fut_euclidean_distance))
+  return(df)
+}))
+
+prs_mean_dist <- dist_yield %>% 
+    group_by(group) %>% 
+    summarise(mean_dist = mean(euclidean_distance),
+           sd_dist = sd(euclidean_distance)) %>% 
+  mutate(scenario = "Present") %>% 
+  relocate(scenario)
+
+clim_dist <- rbind(prs_mean_dist, fut_mean_dist) %>% 
+  mutate(scenario = factor(scenario, levels = c("Present", "CNRM-CM6-1, ssp126", 
+                                 "EC-Earth3-Veg, ssp126", "MRI-ESM2-0, ssp126",
+                                 "CNRM-CM6-1, ssp585", "EC-Earth3-Veg, ssp585",
+                                 "MRI-ESM2-0, ssp585")))
+histogram(clim_dist)
+
+ggplot(data = clim_dist,
+       aes(x = scenario, y = mean_dist, color = group, fill = group, group = group)) + 
+  geom_col(width = 0.6, 
+           position = position_dodge()) + 
+  geom_errorbar(aes(ymin = mean_dist-sd_dist, ymax = mean_dist+sd_dist), 
+                color = "black",
+                width = 0.6,
+                linewidth = 0.3,
+                position = position_dodge2(width = 0.6, padding = 0.5)) +
+  scale_color_manual(values = group_col[1:5]) +
+  scale_fill_manual(values = group_col[1:5]) +
+  theme_minimal() + 
+  theme(axis.title = element_text(size = 15),
+        plot.title = element_text(hjust = 0, size = 20)) + 
+  xlab("Scenario") +
+  ylab("Climate distance") 
+
+library(aplot)
+
+plot_list(vn_prs, future_yield_pred[[1]]$projection, future_yield_pred[[2]]$projection,
+          ggplot() + theme_void(), future_yield_pred[[3]]$projection,
+          future_yield_pred[[4]]$projection,
+          ggplot() + theme_void(), future_yield_pred[[5]]$projection,
+          future_yield_pred[[6]]$projection)
+
+tiff("/shared/projects/most_kmer/paper_plot/predict_yield_all.tiff", 
+     width = 30, height = 10, units = "in", res = 720)
+plot_list(future_yield_pred[[1]]$yield, future_yield_pred[[1]]$map,
+          future_yield_pred[[3]]$yield, future_yield_pred[[3]]$map,
+          future_yield_pred[[5]]$yield, future_yield_pred[[5]]$map, 
+          future_yield_pred[[2]]$yield, future_yield_pred[[2]]$map,
+          future_yield_pred[[4]]$yield, future_yield_pred[[4]]$map,
+          future_yield_pred[[6]]$yield, future_yield_pred[[6]]$map,
+          ncol = 6, widths = c(3,1),
+          labels = LETTERS[1:12])
+dev.off()
+
+
+fut_dist <- do.call(rbind, lapply(future_yield_pred, function(f) {
+  df <- f$climchange 
+  return(df)
+}))
+
+all_clim_dist <- dist_yield %>% 
+  mutate(scenario = "Present") %>% 
+  bind_rows(., fut_dist %>% 
+              dplyr::select(district, province, group, fut_euclidean_distance, scenario) %>% 
+              dplyr::rename(euclidean_distance = fut_euclidean_distance))
+
+clim_test <- do.call(rbind, lapply(unique(all_clim_dist$scenario), function(s) {
+  model<-aov(euclidean_distance~group, data=all_clim_dist %>% filter(scenario == s))
+  out <- SNK.test(model, "group", console=TRUE)
+  sig <- out$groups %>% 
+    rownames_to_column("ancestry") %>% 
+    mutate(scenario = s)
+  return(sig)
+}))
+
+tiff("/shared/projects/most_kmer/paper_plot/mean_yield_all.tiff", 
+     width = 13, height = 4, units = "in", res = 1200)
+left_join(clim_test, 
+          clim_dist %>% dplyr::rename(ancestry = group),
+          by = c("scenario", "ancestry")) %>% 
+  mutate(scenario = factor(scenario, levels = c("Present", "CNRM-CM6-1, ssp126", 
+                                 "EC-Earth3-Veg, ssp126", "MRI-ESM2-0, ssp126",
+                                 "CNRM-CM6-1, ssp585", "EC-Earth3-Veg, ssp585",
+                                 "MRI-ESM2-0, ssp585"))) %>% 
+  ggplot(aes(x = scenario, y = euclidean_distance, 
+             color = ancestry, fill = ancestry, group = ancestry)) + 
+  geom_col(width = 0.6, 
+           position = position_dodge()) + 
+  geom_errorbar(aes(ymin = euclidean_distance-sd_dist, ymax = euclidean_distance+sd_dist), 
+                color = "black",
+                width = 0.6,
+                linewidth = 0.3,
+                position = position_dodge2(width = 0.6, padding = 0.5)) +
+  geom_text(aes(x = scenario, y = euclidean_distance+sd_dist + .25,
+                label = groups),
+                position = position_dodge2(width = 0.6, padding = 0.5),
+            color = "black") +
+  scale_color_manual(values = group_col[1:5]) +
+  scale_fill_manual(values = group_col[1:5]) +
+  theme_minimal() + 
+  theme(axis.title = element_text(size = 15),
+        plot.title = element_text(hjust = 0, size = 20)) + 
+  xlab("Scenario") +
+  ylab("Climate distance") 
+dev.off()
+```
+
+
+```{r plots_part1}
+tiff("/shared/projects/most_kmer/paper_plot/present_climate.tiff", 
+     width = 12, height = 4, units = "in", res = 1200)
+plot_list(vn_prs12, vn_prs13, er_cor,
+          nrow = 1,
+          labels = LETTERS[1:3])
+dev.off()
+
+var_plot
+vn_prs12_ld <- autoplot(afclim_pca, x = 1, y = 2,
+         data = af_clim, colour = 'group', size = 1,
+         # alpha = 0,
+         loadings = T, loadings.colour = 'blue',
+         loadings.label = T, loadings.label.size = 4,
+         loadings.label.repel = T,
+         loadings.label.colour = "blue", frame = F) +
+  theme_minimal() + 
+  theme(axis.title = element_text(size = 14)) +
+  scale_colour_manual(values = c(group_col[1:5], "Vietnam" = "gray50")) +
+  scale_fill_manual(values = c(group_col[1:5], "Vietnam" = "gray50")) +
+  xlab("PC1 (36.7%)")
+
+vn_prs13_ld <- autoplot(afclim_pca, x = 1, y = 3,
+         data = af_clim, colour = 'group', size = 1,
+         # alpha = 0,
+         loadings = T, loadings.colour = 'blue',
+         loadings.label = T, loadings.label.size = 4,
+         loadings.label.repel = T,
+         loadings.label.colour = "blue", frame = F) +
+  theme_minimal() + 
+  theme(axis.title = element_text(size = 14)) +
+  scale_colour_manual(values = c(group_col[1:5], "Vietnam" = "gray50")) +
+  scale_fill_manual(values = c(group_col[1:5], "Vietnam" = "gray50")) +
+  xlab("PC1 (36.7%)") + ylab("PC3 (18.2%)")
+
+
+tiff("/shared/projects/most_kmer/paper_plot/raw_pca.tiff", 
+     width = 16, height = 4, units = "in", res = 1200)
+plot_list(var_plot, vn_prs12_ld, vn_prs13_ld, 
+          nrow = 1,
+          labels = LETTERS[1:3],
+          widths = c(4, 6, 6))
+dev.off()
+
+
+tiff("/shared/projects/most_kmer/paper_plot/project_climate_all.tiff", 
+     width = 15, height = 9, units = "in", res = 1200)
+# plot_list(future_yield_pred[[1]]$projection, future_yield_pred[[3]]$projection, future_yield_pred[[5]]$projection,
+#           future_yield_pred[[2]]$projection, future_yield_pred[[4]]$projection, future_yield_pred[[6]]$projection,
+#           labels = LETTERS[1:6])
+ggarrange(future_yield_pred[[1]]$projection + theme(plot.margin = margin(.5,0.5,0.5,0.5, "cm")),
+          future_yield_pred[[3]]$projection + theme(plot.margin = margin(.5,0.5,0.5,0.5, "cm")),
+          future_yield_pred[[5]]$projection + theme(plot.margin = margin(.5,0.5,0.5,0.5, "cm")),
+          future_yield_pred[[2]]$projection + theme(plot.margin = margin(.5,0.5,0.5,0.5, "cm")),
+          future_yield_pred[[4]]$projection + theme(plot.margin = margin(.5,0.5,0.5,0.5, "cm")),
+          future_yield_pred[[6]]$projection + theme(plot.margin = margin(.5,0.5,0.5,0.5, "cm")),
+          ncol=3, nrow=2, common.legend = TRUE, legend="right",
+          labels = LETTERS[1:6],
+          font.label = list(size = 14, color = "black", face = "plain", family = NULL))
+dev.off()
+
+tiff("/shared/projects/most_kmer/paper_plot/project_predict_cnrm.tiff", 
+     width = 20, height = 6, units = "in", res = 1200)
+plot_list(future_yield_pred[[2]]$projection + ggtitle("") + theme(legend.position = "right"), 
+          future_yield_pred[[2]]$yield +
+            ggtitle(""), 
+          future_yield_pred[[2]]$map +
+            geom_sf_text(data = vn_pol, aes(label = VARNAME_1), size = 7),
+          labels = LETTERS[1:3],
+          widths = c(2, 3, 1), heights = 2)
+dev.off()
+```
+
+```{r}
+rob_ch_clim_fut <- right_join(rob_ch_clim, yield_change, by = c("district", "province")) %>%
+  mutate(Change = if_else(yield_change < 0, "decrease", "increase"))
 
 ggplot() +
   geom_sf(data = dt_pol, fill = "white", color = "#77a37b", size = 0.3) +
   geom_sf(data = vn_pol, fill = NA, color = "#255429") +
   geom_point(data = rob_ch_clim_fut,
-  aes(x = Long, y = Lat, color = change)) +
+             aes(x = Long, y = Lat, color = yield_change)) +
   theme_void() +
-  scale_color_manual(values = c("#eb5752", "#7eb2f2")) +
+  scale_color_gradient2(low = "#eb5752", mid = "white", high = "#7eb2f2") +
+  # scale_color_manual(values = c("#eb5752", "#7eb2f2")) +
   theme(legend.text = element_text(size = 15),
-  legend.title = element_text(size = 15)) +
-  guide(le)
+  legend.title = element_text(size = 15))
 ```
 
 
+## Latent factors
+
+We use latent factors based on 1 random kmer set, to estimate genetic offset using 18M significant kmers. We should have used the same matrix of latent factors for lfmm. But the latent factors are likely to be consistent in random kmer sets, so it might not change much the results.
+
+```{r}
+library(lfmm)
+library(BEDMatrix)
+
+bedfile <- sample(list.files("/shared/projects/most_kmer/kiss_af/output/3.TABLE2BED", 
+                             full.names = T)[-1], 
+                  1) # "output_file.5.bed"
+bed <- BEDMatrix(bedfile, simple_names = T)
+kmerfile <- sample(list.files("/shared/projects/most_kmer/kiss_af/output/5.RANGES/output_file.5",
+                              full.names = T), 
+                   )
+kmer <- scan(kmerfile)
+climFile <- "/shared/projects/most_kmer/kiss_af/samples/climatic_variables.csv"
+clim <- fread(climFile)
+
+submat <- bed[which(rownames(bed) %in% rownames(clim)), sort(kmer)]
+kmer_count <- colSums(submat)
+submat <- submat[, which(kmer_count < nrow(submat)*2 & kmer_count > 0)]
+
+sub_lfmm <- lfmm_ridge(Y = submat, X = expl, K = K)
+```
+
+## Genetic offset
+
+```{r}
+my_go <- function(Y, X, U, K, X.new) {
+  mod.lm = lm(Y ~ X + U)
+  B = t(mod.lm$coefficients[-c(1, (2+ncol(X)):(1+ncol(X)+K)),])
+  genetic.gap = rowSums(((X.new - X)  %*% t(B))^2)/nrow(B) 
+  return(genetic.gap)
+}
+Y <- matrix(sample(57*10000), nrow = 57)
+X <- matrix(sample(57*19), nrow = 57)
+K <- 5
+U <- matrix(sample(57*K), nrow = 57)
+X.new <- matrix(sample(57*19), nrow = 57)
+test_go <- my_go(Y, X, U, K, X.new)
+```
+
+
+### present Africa to future Africa
+
+
+compare to Remi's results to validate the method of using kmers
+
+```{r}
+af_go <- fread("./IPSL-CM6A-LR_ssp245_2041-2060/genetic_gap_ind.tsv",
+              data.table = F)
+colnames(af_go)[1] <- "Label"
+af_go <- left_join(af_go, af_clim %>% rownames_to_column("Label"), by = "Label")
+af_go <- af_go %>% 
+  filter(group != "hb") %>%
+  mutate(group = case_when(group %in% c("A", "G") ~ "AG",
+                           group %in% c("E", "R") ~ "ER",
+                           group %in% c("O", "B") ~ "OB",
+                           group == "hb" ~ "hybrid",
+                           TRUE ~ group)) 
+  
+
+af <- rnaturalearth::ne_countries(continent = 'africa', returnclass = 'sf')
+
+group_shape <-  c(19:15)
+names(group_shape) <- names(group_col)[1:5]
+
+ggplot() +
+  geom_sf(data = af,
+          fill = "white",
+          # aes(fill = yield_change/present_yield*100),
+          color = "gray", size = 0.3) +
+  geom_point(data = af_go,
+             aes(x = Long, y = Lat, color = rona, shape = group),
+             size = 3) +
+  theme_void() +
+  scale_color_viridis(option = "B", direction = -1, limit = c(0.1, 0.5)) +
+  # scale_color_manual(values = group_col[1:5]) +
+  scale_alpha_continuous(range = c(0.1, 0.5)) +
+  scale_shape_manual(values = group_shape) +
+  theme(legend.text = element_text(size = 12),
+        legend.title = element_text(size = 12),
+        plot.title = element_text(hjust = 0.5),
+        plot.margin = unit(c(0,2,0,2), "cm")) +
+  ylim(c(-15, 14)) +
+  xlim(c(-17, 36))
+
+```
+
+#### correlation
+```{r}
+rcp45 <- fread("./IPSL-CM6A-LR_ssp245_2041-2060/Genomic_Vulnerability_rcp4.5.txt",
+               data.table = F)
+
+rcp45 <- rcp45 %>% filter(!is.na(rona)) 
+cor.test(rcp45$Genomic.Vulnerability, rcp45$rona)
+
+
+rcp45 <- left_join(rcp45, af_clim %>% rownames_to_column("Label"), by = "Label") %>%
+  rowwise() %>% 
+  mutate(group = if_else(is.na(group), "hybrid", as.character(group)))
+ggplot(rcp45) +
+  geom_point(aes(x = Genomic.Vulnerability, y = rona, color = group),
+             size = 3) +
+  theme_minimal() +
+  scale_color_manual(values = c(group_col[1:5], "hybrid" = "gray"))
+```
+
+#### correlation without group OB
+```{r}
+rcp45_filt <- rcp45 %>% filter(group != "OB") 
+# rcp45_filt <- rcp45 %>% filter(Genomic.Vulnerability < .15) 
+cor.test(rcp45_filt$Genomic.Vulnerability, rcp45_filt$rona)
+
+ggplot(rcp45_filt) +
+  geom_point(aes(x = Genomic.Vulnerability, y = rona, color = group),
+             size = 3) +
+  theme_minimal() +
+  scale_color_manual(values = c(group_col[1:5], "hybrid" = "gray"))
+```
+
+
+#### kriging plot
+```{r}
+source("./krige_function_4share.R")
+test_raster <- getData('worldclim', var='bio', res=10)
+## when you imported the raster, what you imported is actually a bunch of 12 rasters (corresponding to the 12 months) so you need to pick up just one
+r <- test_raster[[1]]
+
+## setValues() assign the value to all cells, even if they are NA--what we want is to set the values only on land (i.e. those not NA) and preserve the ocean as NA
+r[!is.na(r)] <- 1
+ext <- extent(c(-17, 36, -15, 14))
+r.sub <- raster::crop(r, ext)
+
+## the kriging will fail if you have overlapping points--which is the case for 3 of your coordinates
+df <- rcp45
+df <- df[order(df$Longitude, df$Latitude),]
+df$duplicated.coord <- duplicated(df[,c("Longitude", "Latitude")])
+subset(df, duplicated.coord==TRUE)
+df <- subset(df, duplicated.coord==FALSE)
+
+## reproduce remi's results
+plot.krige(long = df$Longitude, 
+           lat = df$Latitude, 
+           z = df$Genomic.Vulnerability,
+           raster = r.sub,
+           extremal.value = min(df$Genomic.Vulnerability),
+           cols = viridis(100, option = "A", direction = -1),
+           dot.col.factor = c(group_col[1:5], "hybrid" = "gray")[df$group],
+           range.values = c(0, 0.5),
+           pixels = 1000)
+
+df2 <- na.omit(df)
+plot.krige(long = df2$Longitude, 
+           lat = df2$Latitude, 
+           z = df2$rona,
+           raster = r.sub,
+           extremal.value = min(df2$rona),
+           cols = viridis(100, option = "A", direction = -1),
+           dot.col.factor = c(group_col[1:5], "hybrid" = "gray")[df2$group],
+           size_points = 3,
+           pixels = 1000, 
+           range.values = c(0.1, 0.5),
+           map = af)
+
+```
+
+```{r}
+af_go <- fread("./IPSL-CM6A-LR_ssp585_2041-2060/genetic_gap_ind.tsv",
+              data.table = F)
+colnames(af_go)[1] <- "Label"
+af_go <- left_join(af_go, af_clim %>% rownames_to_column("Label"), by = "Label")
+af_go <- af_go  %>%
+  rowwise() %>% 
+  mutate(group = if_else(is.na(group), "hybrid", as.character(group)))
+
+df3 <- af_go %>% 
+  distinct(Long, Lat, .keep_all = T) %>% 
+  filter(!is.na(Long))
+
+plot.krige(long = df3$Long, 
+           lat = df3$Lat, 
+           z = df3$rona,
+           raster = r.sub,
+           extremal.value = min(df3$rona)*.9,
+           cols = viridis(100, option = "A", direction = -1),
+           dot.col.factor = c(group_col[1:5], "hybrid" = "gray")[df3$group],
+           size_points = 3,
+           pixels = 1000, 
+           range.values = c(0.1, 0.5),
+           map = af)
+```
+
+#### use worldclim 1.4 data, common individuals with Remi
+```{r}
+wc14 <- fread("../bioclim/wc1-4_present_Africa.csv",
+              data.table = F)
+group_assign <- fread("../af_samples_ancestry.csv")
+group_assign <- group_assign %>% 
+  mutate(Label = gsub("_\\D{1,2}$", "", Label)) %>% 
+  dplyr::rename(group = "assign")
+wc14 <- left_join(wc14, group_assign, by = "Label")
+wc14 %>% 
+  group_by(group) %>% 
+  summarise(n = n())
+```
+
+
+kmer, rcp 4.5
+```{r}
+kmer_45_files <- list.files(".", "45bi50$")
+kmer_45 <- do.call(rbind, lapply(kmer_45_files, function(d) {
+  df <- fread(file.path(d, "genetic_gap_ind.tsv"), data.table = F)
+  colnames(df)[1] <- "Label"
+  df$clim <- d
+  return(df)
+}))
+mean_kmer_45 <- kmer_45 %>% 
+  group_by(Label) %>% 
+  summarise(mean_rona = mean(rona)) %>% 
+  mutate(markers = "kmer",
+         clim = "rcp4.5")
+```
+
+kmer, rcp 8.5
+```{r}
+kmer_85_files <- list.files(".", "85bi50$")
+kmer_85 <- do.call(rbind, lapply(kmer_85_files, function(d) {
+  df <- fread(file.path(d, "genetic_gap_ind.tsv"), data.table = F)
+  colnames(df)[1] <- "Label"
+  df$clim <- d
+  return(df)
+}))
+mean_kmer_85 <- kmer_85 %>% 
+  group_by(Label) %>% 
+  summarise(mean_rona = mean(rona))%>% 
+  mutate(markers = "kmer",
+         clim = "rcp8.5")
+```
+
+
+snp, rcp 4.5
+```{r}
+snp_45_files <- list.files(".", "45bi50_snp$")
+snp_45 <- do.call(rbind, lapply(snp_45_files, function(d) {
+  df <- fread(file.path(d, "genetic_gap_ind.tsv"), data.table = F)
+  colnames(df)[1] <- "Label"
+  df$clim <- d
+  return(df)
+}))
+mean_snp_45 <- snp_45 %>% 
+  group_by(Label) %>% 
+  summarise(mean_rona = mean(rona))%>% 
+  mutate(markers = "snp",
+         clim = "rcp4.5")
+```
+
+snp, rcp 8.5
+```{r}
+snp_85_files <- list.files(".", "85bi50_snp$")
+snp_85 <- do.call(rbind, lapply(snp_85_files, function(d) {
+  df <- fread(file.path(d, "genetic_gap_ind.tsv"), data.table = F)
+  colnames(df)[1] <- "Label"
+  df$clim <- d
+  return(df)
+}))
+mean_snp_85 <- snp_85 %>% 
+  group_by(Label) %>% 
+  summarise(mean_rona = mean(rona))%>% 
+  mutate(markers = "snp",
+         clim = "rcp8.5")
+```
+
+```{r}
+remi_45 <- fread("./IPSL-CM6A-LR_ssp245_2041-2060/Genomic_Vulnerability_rcp4.5.txt",
+                 data.table = F)
+remi_45 <- na.omit(remi_45)
+```
+
+
+```{r}
+cor.test(remi_45$rona, mean_kmer_45$mean_rona)
+remi_45 <- left_join(remi_45, wc14, by = "Label")
+left_join(remi_45, mean_kmer_45 %>% dplyr::rename(rona_kmer = "mean_rona")) %>% 
+  ggplot() +
+  geom_point(aes(x = Genomic.Vulnerability, y = rona_kmer, color = group),
+             size = 3) +
+  theme_minimal() +
+  scale_color_manual(values = c(group_col[1:5], "hybrid" = "gray"))
+```
+
+```{r}
+cor.test(remi_45$rona, mean_snp_45$mean_rona)
+left_join(remi_45, mean_snp_45 %>% dplyr::rename(rona_snp = "mean_rona")) %>% 
+  ggplot() +
+  geom_point(aes(x = Genomic.Vulnerability, y = rona_snp, color = group),
+             size = 3) +
+  theme_minimal() +
+  scale_color_manual(values = c(group_col[1:5], "hybrid" = "gray"))
+```
+
+```{r}
+cor.test(mean_kmer_45$mean_rona, mean_snp_45$mean_rona)
+mean_kmer_45 <- left_join(mean_kmer_45, wc14, by = "Label") 
+left_join(mean_kmer_45 %>% dplyr::rename(rona_kmer = "mean_rona"), 
+          mean_snp_45 %>% dplyr::rename(rona_snp = "mean_rona"),
+          by = "Label") %>% 
+  ggplot() +
+  geom_point(aes(x = rona_kmer, y = rona_snp, color = group),
+             size = 3) +
+  theme_minimal() +
+  scale_color_manual(values = c(group_col[1:5], "hybrid" = "gray"))
+```
+
+
+```{r}
+cor.test(mean_kmer_85$mean_rona, mean_snp_85$mean_rona)
+mean_kmer_85 <- left_join(mean_kmer_85, wc14, by = "Label")
+left_join(mean_kmer_85 %>% dplyr::rename(rona_kmer = "mean_rona"), 
+          mean_snp_85 %>% dplyr::rename(rona_snp = "mean_rona"),
+          by = "Label") %>% 
+  ggplot() +
+  geom_point(aes(x = rona_kmer, y = rona_snp, color = group),
+             size = 3) +
+  theme_minimal() +
+  scale_color_manual(values = c(group_col[1:5], "hybrid" = "gray"))
+```
+
+
+```{r}
+## the kriging will fail if you have overlapping points--which is the case for 3 of your coordinates
+df <- mean_kmer_45
+df <- df[order(df$Long, df$Lat),]
+df$duplicated.coord <- duplicated(df[,c("Long", "Lat")])
+subset(df, duplicated.coord==TRUE)
+df <- subset(df, duplicated.coord==FALSE)
+
+plot.krige(long = df$Long, 
+           lat = df$Lat, 
+           z = df$mean_rona,
+           raster = r.sub,
+           extremal.value = min(df$mean_rona)*.9,
+           cols = viridis(100, option = "A", direction = -1),
+           dot.col.factor = c(group_col[1:5], "hybrid" = "gray")[df$group],
+           size_points = 3,
+           pixels = 1000, 
+           range.values = c(0.1, 0.4),
+           map = af)
+```
+
+```{r}
+mean_snp_45 <- left_join(mean_snp_45, wc14, by = "Label") %>%
+  rowwise() %>% 
+  mutate(group = if_else(is.na(group), "hybrid", as.character(group)))
+## the kriging will fail if you have overlapping points--which is the case for 3 of your coordinates
+df <- mean_snp_45
+df <- df[order(df$Long, df$Lat),]
+df$duplicated.coord <- duplicated(df[,c("Long", "Lat")])
+subset(df, duplicated.coord==TRUE)
+df <- subset(df, duplicated.coord==FALSE)
+
+plot.krige(long = df$Long, 
+           lat = df$Lat, 
+           z = df$mean_rona,
+           raster = r.sub,
+           extremal.value = min(df$mean_rona)*.9,
+           cols = viridis(100, option = "A", direction = -1),
+           dot.col.factor = c(group_col[1:5], "hybrid" = "gray")[df$group],
+           size_points = 3,
+           pixels = 1000, 
+           range.values = c(0.1, 0.25),
+           map = af)
+```
+
+
+```{r}
+mean_kmer_85 <- left_join(mean_kmer_85, wc14, by = "Label") %>%
+  rowwise() %>% 
+  mutate(group = if_else(is.na(group), "hybrid", as.character(group)))
+## the kriging will fail if you have overlapping points--which is the case for 3 of your coordinates
+df <- mean_kmer_85
+df <- df[order(df$Long, df$Lat),]
+df$duplicated.coord <- duplicated(df[,c("Long", "Lat")])
+subset(df, duplicated.coord==TRUE)
+df <- subset(df, duplicated.coord==FALSE)
+
+plot.krige(long = df$Long, 
+           lat = df$Lat, 
+           z = df$mean_rona,
+           raster = r.sub,
+           extremal.value = min(df$mean_rona)*.9,
+           cols = viridis(100, option = "A", direction = -1),
+           dot.col.factor = c(group_col[1:5], "hybrid" = "gray")[df$group],
+           size_points = 3,
+           pixels = 1000, 
+           range.values = c(0.1, 0.4),
+           map = af)
+```
+
+
+
+```{r}
+mean_snp_85 <- left_join(mean_snp_85, wc14, by = "Label") %>%
+  rowwise() %>% 
+  mutate(group = if_else(is.na(group), "hybrid", as.character(group)))
+## the kriging will fail if you have overlapping points--which is the case for 3 of your coordinates
+df <- mean_snp_85
+df <- df[order(df$Long, df$Lat),]
+df$duplicated.coord <- duplicated(df[,c("Long", "Lat")])
+subset(df, duplicated.coord==TRUE)
+df <- subset(df, duplicated.coord==FALSE)
+
+plot.krige(long = df$Long, 
+           lat = df$Lat, 
+           z = df$mean_rona,
+           raster = r.sub,
+           extremal.value = min(df$mean_rona)*.9,
+           cols = viridis(100, option = "A", direction = -1),
+           dot.col.factor = c(group_col[1:5], "hybrid" = "gray")[df$group],
+           size_points = 3,
+           pixels = 1000, 
+           range.values = c(0.1, 0.25),
+           map = af)
+```
+### present Africa to Vietnam in the present
+
+```{r}
+af_info <- read.table("../../kiss_af/samples/af_sample_name.txt")
+
+af_clim_file <- "../bioclim/climatic_variables_af_wc2.1.csv"
+af_clim <- read.csv(af_clim_file)
+af_clim <- af_clim %>% 
+  dplyr::rename(group = snp_group) %>% 
+  filter(group != "hb") %>%
+  mutate(group = case_when(group %in% c("A", "G") ~ "AG",
+                           group %in% c("E", "R") ~ "ER",
+                           group %in% c("O", "B") ~ "OB",
+                           group == "hb" ~ "hybrid",
+                           TRUE ~ group)) %>% 
+  dplyr::select(Label, group)
+
+avg_go <- function(go_path, occ, vnclim) {
+  go_files <- list.files(go_path, paste0("genetic_gap_env_", occ, ".tsv"), 
+                         recursive = T, full.names = T)
+  all_go <- do.call(rbind, lapply(go_files, function(f) read.table(f, header = T)))
+  mean_go <- all_go %>% 
+    group_by(ind, env_dist) %>% 
+    summarise(mean_offset = mean(offset),
+              mean_rona = mean(rona)) %>% 
+    mutate(occurrence = rownames(vnclim)[occ])
+  return(mean_go)
+}
+
+
+
+sum_go <- function(go_path, afclim = af_clim, vnclim = rob_ch_clim, distyield = dist_yield, groupcol = c(group_col[1:5], "hybrid" = "gray")) {
+  # read go results
+  go <- do.call(rbind, lapply(1:nrow(vnclim), function(i) {
+    cat(i, "\t")
+    go_file <- paste0(go_path, "/", i, "/genetic_gap_ind.tsv")
+    go_ind <- read.table(go_file)
+    go_ind <- go_ind %>%
+      rownames_to_column("Label")
+    occ <- rownames(vnclim)[i]
+    go_ind$occurrence <- occ
+    return(go_ind)
+  }))
+  
+  # go <- do.call(rbind, lapply(1:nrow(vnclim), function(i) {
+  #   cat(i, "\t")
+  #   go_occ <- avg_go(go_path, occ = i, vn_clim)
+  #   go_occ <- go_occ %>%
+  #     rename(offset = mean_offset,
+  #            rona = mean_rona,
+  #            Label = ind)
+  #   return(go_occ)
+  # }))
+  
+  ## combine go with clim distance
+  go <- go %>% 
+    left_join(., afclim %>% rownames_to_column("Label"), 
+              by = "Label") %>%
+    rowwise() %>% 
+    dplyr::mutate(group = if_else(is.na(group), "hybrid", group)) %>% 
+    # dplyr::filter(!is.na(group)) %>%
+    dplyr::mutate(group = factor(group, names(groupcol)))
+  
+  ## go vs rona
+  go_rona <- ggplot(go) +
+    facet_wrap(vars(group), nrow = 1) +
+    geom_point(aes(x = rona, y = offset, color = group), size = 1) +
+    scale_color_manual(values = groupcol) +
+    theme_minimal() +
+    theme(strip.text = element_text(size = 15),
+          axis.title = element_text(size = 15),
+          axis.text = element_text(size = 10),
+          legend.text = element_text(size = 10),
+          panel.border = element_rect(fill = NA, color = "gray")) +
+    xlab("Modified RONA") +
+    ylab("Genetic offset")
+  
+  ## go vs clim
+  go_clim <- ggplot(go) +
+    facet_wrap(vars(group), nrow = 1) +
+    geom_point(aes(x = env_dist^2, y = offset, color = group), size = 1) +
+    scale_color_manual(values = groupcol) +
+    theme_minimal() +
+    theme(strip.text = element_text(size = 15),
+          axis.title = element_text(size = 15),
+          axis.text = element_text(size = 12),
+          panel.border = element_rect(fill = NA, color = "gray")) +
+    xlab("Squared Euclidean climate distance") +
+    ylab("Genetic offset")
+  
+  ## combine go with yield
+  go <- go %>% 
+    left_join(., vnclim %>% 
+                rownames_to_column("occurrence") %>% 
+                dplyr::select(occurrence, Long, Lat, district, province),
+              by = "occurrence") 
+  offset_yield <- go %>% 
+    group_by(district, province, group) %>% 
+    summarise(mean_offset = mean(offset),
+              sd_offset = sd(offset),
+              .groups = "keep") %>% 
+    left_join(., distyield, by = c("district", "province", "group")) %>% 
+    mutate(group = factor(group, names(groupcol)))
+  
+  ## go by district
+  go_district <- ggplot(offset_yield,
+         aes(x = district, y = mean_offset,
+               fill = group)) +
+    geom_col(position = position_dodge(width = 0.7), width = 0.7, alpha = 0.7) +
+    geom_errorbar(aes(ymin = mean_offset - sd_offset, ymax = mean_offset + sd_offset, 
+                      color = group),
+                  position = position_dodge(width = 0.7), width = .5) +
+    scale_fill_manual(values = groupcol) +
+    scale_color_manual(values = groupcol) +
+    # scale_size_continuous(range = c(1,3)) +
+    theme_minimal() +
+    theme(legend.text = element_text(size = 12),
+          legend.title = element_text(size = 12),
+          plot.title = element_text(hjust = 0.5),
+          title = element_text(hjust = 0.5),
+          axis.text.x = element_blank(),
+          axis.text.y = element_text(size = 12),
+          axis.title = element_text(size = 15),
+          axis.ticks = element_line(color = "gray50")
+          # panel.grid.major.x = element_line(color = "gray80")
+          ) +
+    xlab("District") +
+    ylab("Mean genetic offset")
+  
+  
+  ## go vs log of yield
+  go_yield_cor <- offset_yield %>% 
+    filter(group == "ER") %>% 
+    group_by(group) %>% 
+    summarise(correlation = cor.test(mean_offset, log(yield))$estimate,
+              pvalue = cor.test(mean_offset, log(yield))$p.value)
+  
+  go_yield <- ggplot(offset_yield %>% filter(group == "ER"), 
+                     aes(y = log(yield), x = mean_offset, color = group)) +
+    geom_point() +
+    geom_smooth(method = 'lm', formula = y~x) + 
+    scale_color_manual(values = groupcol) +
+    theme_minimal() +
+    theme(legend.position = "none",
+          legend.title = element_text(size = 12),
+          plot.title = element_text(hjust = 0.5),
+          title = element_text(hjust = 0.5),
+          axis.text = element_text(size = 12),
+          axis.title = element_text(size = 15),
+          axis.ticks = element_line(color = "gray50")
+          # panel.grid.major.x = element_line(color = "gray80")
+          ) +
+    xlab("Mean genetic offset") +
+    ylab("log(Mean yield)")
+  
+  return(list(go = go,
+              go_rona = go_rona, 
+              go_clim = go_clim,
+              go_district = go_district,
+              go_yield = go_yield,
+              go_yield_cor = go_yield_cor))
+}
+```
+
+#### check the result when using K=4 and K=5
+
+K = 4 based on PCA of the 18M significant k-mers\
+K = 5 based on PCA and LFMM of the 1M random kmers (used in LFMM analysis)
+
+```{r}
+go_present_k4 <- sum_go("./present_1970-2000_640occ_K4")
+go_present_k5 <- sum_go("./present_1970-2000_640occ_K5")
+go_present <- sum_go("./present_1970-2000_640occ", afclim = allaf_clim %>% rownames_to_column("Label"))
+
+evr_dist <- do.call(rbind, lapply(list.files(paste0(go_path, "/0_1"), full.names = T), 
+                                  function(f) {
+                                    df <- fread(f)
+                                    id <- as.numeric(gsub("genetic_gap_env_|.tsv", "", basename(f)))
+                                    df$occurrence <- rownames(rob_ch_clim)[id]
+                                    return(df)
+                                  }))
+
+left_join(go, evr_dist %>% 
+            rename(Label = ind) %>% 
+            dplyr::select(Label, occurrence, env_dist)) %>% 
+  ggplot() +
+    facet_wrap(vars(group), nrow = 1) +
+    geom_point(aes(x = env_dist^2, y = offset, color = group), size = 1) +
+    scale_color_manual(values = groupcol) +
+    theme_minimal() +
+    theme(strip.text = element_text(size = 15),
+          axis.title = element_text(size = 15),
+          axis.text = element_text(size = 12),
+          panel.border = element_rect(fill = NA, color = "gray")) +
+    xlab("Squared Euclidean climate distance") +
+    ylab("Genetic offset")
+
+
+go_comp <- merge(go_present_k4$go %>% 
+        dplyr::select(Label, offset, rona, occurrence, group) %>% 
+        rename(offset_K4 = offset, rona_K4 = rona), 
+      go_present_k5$go %>% 
+        dplyr::select(Label, offset, rona, occurrence, group) %>% 
+        rename(offset_K5 = offset, rona_K5 = rona)) 
+
+## compare genetic offset
+ggplot(go_comp) +
+  # facet_wrap(vars(group), nrow = 1) +
+  geom_point(aes(x = offset_K4, y = offset_K5)) +
+  scale_color_manual(values = group_col[1:5]) +
+  theme_minimal() + 
+  theme(legend.text = element_text(size = 12),
+        legend.title = element_text(size = 12),
+        plot.title = element_text(hjust = 0.5),
+        title = element_text(hjust = 0.5),
+        axis.text = element_text(size = 12),
+        axis.title = element_text(size = 15),
+        axis.ticks = element_line(color = "gray50"),
+        strip.text = element_text(size = 15)
+        # panel.grid.major.x = element_line(color = "gray80")
+        ) +
+  xlab("Genetic offset with K = 4") +
+  ylab("Genetic offset with K = 5")
+
+cor.test(go_comp$offset_K4, go_comp$offset_K5)
+
+## compare rona
+ggplot(go_comp) +
+  # facet_wrap(vars(group), nrow = 1) +
+  geom_point(aes(x = rona_K4, y = rona_K5)) +
+  scale_color_manual(values = group_col[1:5]) +
+  theme_minimal() + 
+  theme(legend.text = element_text(size = 12),
+        legend.title = element_text(size = 12),
+        plot.title = element_text(hjust = 0.5),
+        title = element_text(hjust = 0.5),
+        axis.text = element_text(size = 12),
+        axis.title = element_text(size = 15),
+        axis.ticks = element_line(color = "gray50"),
+        strip.text = element_text(size = 15)
+        # panel.grid.major.x = element_line(color = "gray80")
+        ) +
+  xlab("RONA with K = 4") +
+  ylab("RONA with K = 5")
+
+
+cor.test(go_comp$rona_K4, go_comp$rona_K5)
+```
+
+
+
+#### test if GO of group ER is significantly lower than other groups
+
+by post hoc
+
+```{r}
+all_go_present <- left_join(go_present_k4$go, rob_ch_clim %>% 
+                rownames_to_column("occurrence") %>% 
+                dplyr::select(occurrence, Long, Lat, district, province),
+              by = "occurrence")
+
+for (d in unique(rob_ch_clim$district)) {
+  cat(d, "\n")
+  go_aov <- aov(offset ~ group, data = all_go_present %>% filter(district == d))
+  print(summary(go_aov))
+  print(TukeyHSD(go_aov, conf.level = 0.99))
+}
+```
+
+by t-test
+
+```{r}
+library(ggpubr)
+ggbarplot(go_present_k5$go, 
+          x = "district", y = "offset", add = "mean_sd",
+          color = "group", fill = "group", alpha = 0.5, 
+          position = position_dodge(width = 0.8), 
+          width = .7) +
+  stat_compare_means(aes(group = group), label = "p.signif",
+                     method = "anova") +
+                     # method = "t.test", comparisons = list(c("ER", "OB"))) +
+  scale_color_manual(values = group_col[1:5]) +
+  scale_fill_manual(values = group_col[1:5]) +
+  theme_minimal() +
+    theme(legend.text = element_text(size = 12),
+          legend.title = element_text(size = 12),
+          plot.title = element_text(hjust = 0.5),
+          title = element_text(hjust = 0.5),
+          axis.text.x = element_blank(),
+          axis.text.y = element_text(size = 12),
+          axis.title = element_text(size = 15),
+          axis.ticks = element_line(color = "gray50")
+          # panel.grid.major.x = element_line(color = "gray80")
+          ) +
+    xlab("District") +
+    ylab("Mean genetic offset")
+
+signif_er <- compare_means(offset ~ group, data = go_present_k5$go, 
+              group.by = "district", method = "t.test", ref.group = "ER") %>% 
+  ggplot() +
+  geom_text(aes(x = district, y = group2, label = p.signif, color = group2),
+            show.legend = F) +
+  scale_color_manual(values = group_col[1:5]) +
+  scale_fill_manual(values = group_col[1:5]) +
+  theme_minimal() +
+    theme(legend.text = element_text(size = 12),
+          legend.title = element_text(size = 12),
+          plot.title = element_text(hjust = 0.5),
+          title = element_text(hjust = 0.5),
+          axis.text.x = element_blank(),
+          axis.text.y = element_text(size = 12),
+          axis.title.x = element_text(size = 15),
+          axis.title.y = element_text(size = 12, angle = 0, vjust = 0.5),
+          # axis.title.y = element_blank(),
+          axis.ticks.y = element_blank(),
+          axis.ticks.x = element_line(color = "gray50")
+          # panel.grid.major.x = element_line(color = "gray80")
+          ) +
+  xlab("District") +
+  ylab("ER vs.") +
+  ggtitle("Significant level between group ER and other groups")
+
+plot_list(go_present_k5$go_district + 
+            theme(axis.title.x = element_blank(),
+                  axis.ticks.x = element_blank()) +
+            ylab("Genetic offset") +
+            ggtitle("Mean genetic offset in districts"),
+          signif_er,
+          ncol = 1, heights = c(5,1))
+
+## compare group OB with others
+compare_means(offset ~ group, data = go_present_k5$go, 
+              group.by = "district", method = "t.test", ref.group = "OB") %>% 
+  ggplot() +
+  geom_text(aes(x = district, y = group2, label = p.signif, color = group2),
+            show.legend = F) +
+  scale_color_manual(values = group_col[1:5]) +
+  scale_fill_manual(values = group_col[1:5]) +
+  theme_minimal() +
+    theme(legend.text = element_text(size = 12),
+          legend.title = element_text(size = 12),
+          plot.title = element_text(hjust = 0.5),
+          title = element_text(hjust = 0.5),
+          axis.text.x = element_blank(),
+          axis.text.y = element_text(size = 12),
+          axis.title.x = element_text(size = 15),
+          axis.title.y = element_text(size = 12, angle = 0, vjust = 0.5),
+          # axis.title.y = element_blank(),
+          axis.ticks.y = element_blank(),
+          axis.ticks.x = element_line(color = "gray50")
+          # panel.grid.major.x = element_line(color = "gray80")
+          ) +
+  xlab("District") +
+  ylab("OB vs.") +
+  ggtitle("Significant level between group ER and other groups")
+
+```
+
+#### show climate distance, yield, genetic offset on map
+
+```{r}
+## climate distance
+ggplot() +
+    geom_sf(data = merge(dt_pol, distER_yield, 
+                         by.x = "VARNAME_2", by.y = "district"),
+            # fill = "white",
+            aes(fill = euclidean_distance),
+            color = "#77a37b", size = 0.3) +
+    geom_sf(data = vn_pol, fill = NA, color = "#255429") +
+    # geom_point(data = left_join(distER_yield, go_present_k5$go,
+    #                             by = c("district", "province", "group")), 
+    #            aes(x = Long, y = Lat, color = env_dist),
+    #            size = 2) +
+    theme_void() +
+    scale_fill_gradient(low = "gray90", high = group_col["ER"],
+                         guide = guide_colorbar(title = "Climate distance\nto group ER")) +
+    theme(legend.text = element_text(size = 12),
+          legend.title = element_text(size = 12),
+          plot.title = element_text(hjust = 0.5)) 
+
+## yield
+ggplot() +
+    geom_sf(data = merge(dt_pol, distER_yield, 
+                         by.x = "VARNAME_2", by.y = "district"), 
+            # fill = "white",
+            aes(fill = yield),
+            color = "#77a37b", size = 0.3) +
+    geom_sf(data = vn_pol, fill = NA, color = "#255429") +
+    # geom_point(data = left_join(distER_yield, go_present_k5$go,
+    #                             by = c("district", "province", "group")), 
+    #            aes(x = Long, y = Lat, color = yield),
+    #            size = 2) +
+    theme_void() +
+    scale_fill_gradient(low = "gray90", high = group_col["ER"],
+                         guide = guide_colorbar(title = "Yield (ton/ha)")) +
+    theme(legend.text = element_text(size = 12),
+          legend.title = element_text(size = 12),
+          plot.title = element_text(hjust = 0.5)) 
+
+
+## offset by occurrence
+ggplot() +
+  geom_sf(data = dt_pol,
+          fill = "white",
+          # aes(fill = yield_change/present_yield*100),
+          color = "#77a37b", size = 0.3) +
+  geom_sf(data = vn_pol, fill = NA, color = "#255429") +
+  geom_point(data = go_present$go %>% filter(group == "ER"),
+             aes(x = Long, y = Lat, color = offset),
+             size = 1) +
+  theme_void() +
+  scale_color_gradient(low = "gray90", high = group_col["ER"],
+                       limits = c(0, 10),
+                       # breaks = seq(0,2.5,.5),
+                       labels = c(0, "", 5, "", 10),
+                       guide = guide_colorbar(title = "Genetic offset")) +
+  theme(legend.text = element_text(size = 12),
+        legend.title = element_text(size = 12),
+        plot.title = element_text(hjust = 0.5))
+
+
+## offset by district
+ggplot() +
+  geom_sf(data = merge(dt_pol, go_present$go %>% filter(group == "ER"), 
+                       by.x = "VARNAME_2", by.y = "district"), 
+          # fill = "white",
+          aes(fill = offset),
+          color = "#77a37b", size = 0.3) +
+  geom_sf(data = vn_pol, fill = NA, color = "#255429") +
+  # geom_point(data = go_present_k5$go %>% filter(group == "ER"), 
+  #            aes(x = Long, y = Lat, color = offset),
+  #            size = 2) +
+  theme_void() +
+  scale_fill_gradient(low = "gray90", high = group_col["ER"],
+                     limits = c(0, 10),
+                     # breaks = seq(0,2.5,.5),
+                     labels = c(0, "", 5, "", 10),
+                     guide = guide_colorbar(title = "Genetic offset")) +
+  theme(legend.text = element_text(size = 12),
+        legend.title = element_text(size = 12),
+        plot.title = element_text(hjust = 0.5))
+
+
+
+# ggplot() +
+#     geom_sf(data = merge(dt_pol, distER_yield, 
+#                          by.x = "VARNAME_2", by.y = "district"), 
+#             # fill = "white", 
+#             aes(fill = mean(euclidean_distance)),
+#             color = "#77a37b", size = 0.3) +
+#     geom_sf(data = vn_pol, fill = NA, color = "#255429") +
+#     geom_point(data = go_present_k5$go %>% filter(group == "ER"), 
+#                aes(x = Long, y = Lat, color = offset),
+#                size = 1) +
+#     theme_void() +
+#     scale_color_gradient(low = "gray90", high = group_col["ER"],
+#                          guide = guide_colorbar(title = "Genetic offset")) +
+#     scale_fill_gradient(high = "#1a451f", low = "white",
+#                          guide = guide_colorbar(title = "Climate distance\nto group ER")) + # "Change in  yield\n(% current yield)"
+#     theme(legend.text = element_text(size = 12),
+#           legend.title = element_text(size = 12),
+#           plot.title = element_text(hjust = 0.5)) 
+
+```
+
+```{r}
+sign_district <- rob_ch_clim %>% 
+  group_by(district) %>% 
+  summarise(n = n()) %>% 
+  filter(n > 4) %>% pull(district)
+cor_tests <- left_join(go_present$go %>% 
+                         filter(group == "ER") %>% 
+                         group_by(district, province) %>% 
+                         summarise(mean_offset = mean(offset)),
+                       distER_yield,
+                       by = c("district", "province")) %>% 
+  filter(district %in% sign_district) # %>% 
+  # filter(province %in% c("Đắk Lắk", "Đắk Nông", "Kon Tum")) # "Gia Lai"
+cor.test(log(cor_tests$yield), cor_tests$mean_offset)
+
+ggplot(cor_tests, 
+       aes(y = log(yield), x = mean_offset, col = group)) +
+    geom_point() +
+    geom_smooth(method = 'lm', formula = y~x) + 
+    scale_color_manual(values = group_col["ER"]) +
+    theme_minimal() +
+    theme(legend.position = "none",
+          legend.title = element_text(size = 12),
+          plot.title = element_text(hjust = 0.5),
+          title = element_text(hjust = 0.5),
+          axis.text = element_text(size = 12),
+          axis.title = element_text(size = 15),
+          axis.ticks = element_line(color = "gray50")
+          # panel.grid.major.x = element_line(color = "gray80")
+          ) +
+    xlab("Mean genetic offset") +
+    ylab("log(Mean yield)")
+```
+
+```{r}
+## offset/yield
+ggplot() +
+    geom_sf(data = merge(dt_pol, cor_tests, 
+                         by.x = "VARNAME_2", by.y = "district"), 
+            # fill = "white",
+            aes(fill = mean_offset/yield),
+            color = "#77a37b", size = 0.3) +
+    geom_sf(data = vn_pol, fill = NA, color = "#255429") +
+    # geom_point(data = go_present_k5$go %>% filter(group == "ER"), 
+    #            aes(x = Long, y = Lat, color = offset),
+    #            size = 2) +
+    theme_void() +
+    scale_fill_gradient(low = "gray90", high = group_col["ER"],
+                         # limits = c(0, 2.5), breaks = seq(0,2.5,.5),
+                         # labels = c(0, "", 1, "", 2, ""),
+                         guide = guide_colorbar(title = "Genetic offset/Yield")) +
+    theme(legend.text = element_text(size = 12),
+          legend.title = element_text(size = 12),
+          plot.title = element_text(hjust = 0.5))
+```
+
+### present Africa to future Vietnam
+
+```{r}
+go_results <- c("./present_1970-2000_640occ/",
+                "./CNRM-CM6-1_ssp126_2041-2060/", "./CNRM-CM6-1_ssp585_2041-2060/",
+                "./EC-Earth3-Veg_ssp126_2041-2060/", "./EC-Earth3-Veg_ssp585_2041-2060/", 
+                "./MRI-ESM2-0_ssp126_2041-2060/", "./MRI-ESM2-0_ssp585_2041-2060/")
+go_all <- do.call(rbind, lapply(go_results, function(f) {
+  cat(f)
+  md <- paste(str_split_fixed(basename(f), "_", 3)[1:2], collapse  = ", ")
+  go_data <- sum_go(f, afclim = allaf_clim %>% rownames_to_column("Label"))
+  go_out <- go_data$go
+  go_out$model <- md
+  go_out <- go_out #%>% dplyr::select(-c(bio_1:bio_19), group)
+  return(go_out)
+}))
+
+go_all <- go_all %>% 
+  dplyr::select(-group) %>% 
+  left_join(., snmf_assign)
+
+go_all_sum <- go_all %>% 
+  mutate(model = if_else(grepl("present", model), "present", model)) %>% 
+  # group_by(district, province, group, model) %>% 
+  # summarise(nind = length(unique(occurrence)), .groups = "drop") %>% 
+  group_by(district, province, group, model) %>% 
+  summarise(mean_offset = mean(offset),
+            sd_offset = sd(offset),
+            nind = length(unique(occurrence)),
+            .groups = "drop") %>% 
+  mutate(model = factor(model, c("present", "CNRM-CM6-1, ssp126", 
+                                 "EC-Earth3-Veg, ssp126", "MRI-ESM2-0, ssp126",
+                                 "CNRM-CM6-1, ssp585", "EC-Earth3-Veg, ssp585",
+                                 "MRI-ESM2-0, ssp585")),
+         district = paste0(district, " (N = ", nind, ")"))
+
+ggplot(go_all_sum, 
+       aes(x = district, y = mean_offset,
+           fill = model)) +
+  facet_wrap(vars(group), ncol = 1) +
+  geom_col(position = position_dodge(width = 0.7), width = 0.7, alpha = 0.7) +
+  geom_errorbar(aes(ymin = mean_offset - sd_offset, ymax = mean_offset + sd_offset, 
+                    color = model),
+                position = position_dodge(width = 0.7), width = .5) +
+  # scale_fill_manual(values = groupcol) +
+  # scale_color_manual(values = groupcol) +
+  # scale_size_continuous(range = c(1,3)) +
+  theme_minimal() +
+  theme(legend.text = element_text(size = 12),
+        legend.title = element_text(size = 12),
+        # plot.title = element_text(hjust = 0.5),
+        # title = element_text(hjust = 0.5),
+        axis.text.x = element_blank(),
+        axis.text.y = element_text(size = 12),
+        axis.title = element_text(size = 15),
+        axis.ticks = element_line(color = "gray50")
+        # panel.grid.major.x = element_line(color = "gray80")
+        ) +
+  xlab("District") +
+  ylab("Mean genetic offset")
+
+
+ggplot(go_all_sum, 
+       aes(x = model, y = mean_offset,
+           color = group, group = group)) +
+  facet_wrap(vars(district), scales = "fixed", ncol = 8) +
+  geom_line() + 
+  geom_point(size = 1) +
+  # geom_point(data = go_all %>% filter(group == "hybrid") %>% 
+  #            mutate(district = paste0(district, " (N = ", nind, ")")),
+  #            aes(x = model, y = offset), fill = "black") +
+  geom_errorbar(aes(ymin = mean_offset - sd_offset, ymax = mean_offset + sd_offset,
+                    color = group), width = 0.2) +
+  # scale_fill_manual(values = groupcol) +
+  scale_color_manual(values = c(group_col[1:5])) +
+  # scale_size_continuous(range = c(1,3)) +
+  theme_minimal() +
+  theme(legend.text = element_text(size = 12),
+        legend.title = element_text(size = 12),
+        # plot.title = element_text(hjust = 0.5),
+        # title = element_text(hjust = 0.5),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.text.y = element_text(size = 12),
+        axis.title = element_text(size = 15),
+        axis.ticks = element_line(color = "gray50"),
+        strip.text = element_text(size = 12)
+        # panel.grid.major.x = element_line(color = "gray80")
+        ) +
+  xlab("Scenario") +
+  ylab("Mean genetic offset")
+```
+
+
+```{r}
+go_map_list <- lapply(unique(go_all$model), function(s) {
+  m <- ggplot() +
+    geom_sf(data = dt_pol,
+            fill = "white",
+            # aes(fill = yield_change/present_yield*100),
+            color = "#77a37b", size = 0.3) +
+    geom_sf(data = vn_pol, fill = NA, color = "#255429") +
+    geom_point(data = go_all %>% filter(group == "ER", model == s),
+               aes(x = Long.y, y = Lat.y, color = offset),
+               size = 1, show.legend = (s == "present, 1970-2000")) +
+    theme_void() +
+    scale_color_gradient(low = "gray90", high = group_col["ER"],
+                         limits = c(0, 10),
+                         # breaks = seq(0,2.5,.5),
+                         labels = c(0, "", 5, "", 10),
+                         guide = guide_colorbar(title = "Genetic offset")) +
+    theme(legend.text = element_text(size = 12),
+          legend.title = element_text(size = 12),
+          plot.title = element_text(hjust = 0.5),
+          plot.margin = unit(c(0,2,0,2), "cm")) +
+    ggtitle(s)
+  return(m)
+})
+
+plot_list(go_map_list[[1]], go_map_list[[2]], go_map_list[[3]], 
+          ggplot() + theme_void(), go_map_list[[4]], go_map_list[[5]],
+          ggplot() + theme_void(), go_map_list[[6]], go_map_list[[7]],
+          nrow = 3, byrow = T)
+
+go_map_list <- lapply(unique(go_all$model), function(s) {
+  m <- ggplot() +
+    geom_sf(data = dt_pol,
+            fill = "white",
+            # aes(fill = yield_change/present_yield*100),
+            color = "#77a37b", size = 0.3) +
+    geom_sf(data = vn_pol, fill = NA, color = "#255429") +
+    geom_point(data = go_all %>% filter(group == "AG", model == s),
+               aes(x = Long, y = Lat, color = offset),
+               size = 1, show.legend = (s == "present, 1970-2000")) +
+    theme_void() +
+    scale_color_gradient(low = "gray90", high = group_col["AG"],
+                         limits = c(0, 10),
+                         # breaks = seq(0,2.5,.5),
+                         labels = c(0, "", 5, "", 10),
+                         guide = guide_colorbar(title = "Genetic offset")) +
+    theme(legend.text = element_text(size = 12),
+          legend.title = element_text(size = 12),
+          plot.title = element_text(hjust = 0.5),
+          plot.margin = unit(c(0,2,0,2), "cm")) +
+    ggtitle(ifelse(grepl("present", s), "present", s))
+  return(m)
+})
+
+pdf("go_map.pdf", width = 10, height = 10)
+plot_list(go_map_list[[1]], go_map_list[[2]], go_map_list[[3]], 
+          ggplot() + theme_void(), go_map_list[[4]], go_map_list[[5]],
+          ggplot() + theme_void(), go_map_list[[6]], go_map_list[[7]],
+          nrow = 3, byrow = T)
+dev.off()
+```
+
+
+list of genetic offset vs climate distance
+
+```{r}
+tiff("/shared/projects/most_kmer/paper_plot/go_clim.tiff", 
+    width = 14, height = 8, units = "in", res = 1200)
+go_all %>% 
+  mutate(model = if_else(grepl("present", model), "Present", model)) %>% 
+  mutate(model = factor(model, c("Present", "CNRM-CM6-1, ssp126", 
+                                 "EC-Earth3-Veg, ssp126", "MRI-ESM2-0, ssp126",
+                                 "CNRM-CM6-1, ssp585", "EC-Earth3-Veg, ssp585",
+                                 "MRI-ESM2-0, ssp585"))) %>%
+  mutate(group = factor(group, c("AG", "C", "D", "ER", "OB", "hybrid"))) %>% 
+  filter(group != "hybrid") %>%
+  ggplot(aes(x = env_dist^2, y = offset, group = group)) +
+  facet_grid(rows = vars(group), cols = vars(model)) +
+  geom_point(aes(color = group), size = 1, show.legend = F) + 
+  sm_statCorr(color = "gray50", fill = "gray50", label_y = 7.5) +
+  # geom_smooth(method='lm', color = "gray50") +
+  scale_color_manual(values = group_col) +
+  theme_minimal() +
+  theme(strip.text.y = element_text(size = 15),
+        strip.text.x = element_text(size = 10),
+        axis.title = element_text(size = 15),
+        axis.text.y = element_text(size = 12),
+        axis.text.x = element_text(size = 7),
+        panel.border = element_rect(fill = NA, color = "gray")) +
+  xlab("Squared Euclidean climate distance") +
+  ylab("Genetic offset")
+
+dev.off()
+
+go_all %>% 
+  mutate(model = if_else(grepl("present", model), "Present", model)) %>% 
+  mutate(model = factor(model, c("Present", "CNRM-CM6-1, ssp126", 
+                                 "EC-Earth3-Veg, ssp126", "MRI-ESM2-0, ssp126",
+                                 "CNRM-CM6-1, ssp585", "EC-Earth3-Veg, ssp585",
+                                 "MRI-ESM2-0, ssp585"))) %>%
+  mutate(group = factor(group, c("AG", "C", "D", "ER", "OB", "hybrid"))) %>% 
+  # filter(group != "hybrid") %>% 
+  ggplot() +
+  facet_grid(rows = vars(group), cols = vars(model)) +
+  # geom_histogram(aes(x = offset, color = group, fill = group), binwidth = 0.02) +
+  geom_density(aes(x = offset, color = group)) +
+  scale_color_manual(values = group_col) +
+  scale_fill_manual(values = group_col) +
+  theme_minimal() +
+  theme(strip.text.y = element_text(size = 15),
+        strip.text.x = element_text(size = 10),
+        axis.title = element_text(size = 15),
+        axis.text.y = element_text(size = 12),
+        axis.text.x = element_text(size = 7),
+        panel.border = element_rect(fill = NA, color = "gray")) +
+  xlab("Genetic offset") +
+  ylab("Density")
+```
 
 ## Presence/absence of the significant k-mers
 
@@ -480,13 +2100,11 @@ head -n1 signif_kmer_table_x10.txt > signif_kmer_table.txt
 awk FNR-1 signif_kmer_table_x*.txt >> signif_kmer_table.txt
 ```
 
-```
-For the question about how to know if significant kmers found in Africa are present or not in vietnam accessions, i think you can:
-Obtain the kmers table using reads from vietnan samples by using kiss
-Filter these table using the "african significant kmers" using filter_kmers. Filter_kmers is a script you can found in https://github.com/voichek/kmersGWAS ...  you can also use kiss singularity
- filter_kmers -t kmers_table_vietnan -k outliers_african.list -o filter_table
-Analyse the filter_table by pandas...
-```
+    For the question about how to know if significant kmers found in Africa are present or not in vietnam accessions, i think you can:
+    Obtain the kmers table using reads from vietnan samples by using kiss
+    Filter these table using the "african significant kmers" using filter_kmers. Filter_kmers is a script you can found in https://github.com/voichek/kmersGWAS ...  you can also use kiss singularity
+     filter_kmers -t kmers_table_vietnan -k outliers_african.list -o filter_table
+    Analyse the filter_table by pandas...
 
 ```{r}
 kmer_inds <- colnames(fread("./signif_kmer_table.txt", nrows = 0, drop = 1))
@@ -503,9 +2121,7 @@ kmer_er_count <- colSums(kmer_er_table)
 
 ```
 
-total 102776471 kmers 
-kmer count in VN inds: 17,211,265 - 22,921,729
-kmer count in ER inds: 15,377,198 - 34,717,544
+total 102776471 kmers kmer count in VN inds: 17,211,265 - 22,921,729 kmer count in ER inds: 15,377,198 - 34,717,544
 
 ```{r}
 samples <- fread("./all_sample_name.txt")
@@ -582,7 +2198,6 @@ kmer_pa_stats <- lapply(levels(samples$phenotype_value), function(gr) {
 })
 ```
 
-
 ```{r}
 kmer_shared_dif <- list.files("./kmer_shared", ".RDS", full.names = T)
 kmer_shared <- unlist(readRDS(kmer_shared_dif[1]))
@@ -653,7 +2268,6 @@ do.call(rbind, lapply(c("D", "C", "AG", "OB", "ER", "hybrid"), function(g) {
 #       sets.bar.color = group_col[-c(6,8)])
 ```
 
-
 ```{r}
 data.frame(x = names(kmer_per_ind$Vietnam), y = as.vector(kmer_per_ind$Vietnam)) %>% 
   mutate(x = factor(x, x)) %>% 
@@ -687,5 +2301,306 @@ plot(kmer_fit_vn,
      # n = 4,
      alpha = 0.7,
      fontsize = 2)
+```
+
+```{r}
+kmer_per_ind_sub <- list.files("./kmer_per_ind", ".RDS", full.names = T)
+kmer_per_ind <- readRDS(kmer_per_ind_sub[1])
+kmer_per_ind_vn <- kmer_per_ind$Vietnam
+for (i in kmer_per_ind_sub[-1]) {
+  ki <- readRDS(i)
+  kmer_per_ind_vn <- bind_rows(kmer_per_ind_vn, ki$Vietnam)
+}
+
+kmer_per_ind <- do.call(bind_rows, lapply(1:length(kmer_per_ind_sub), function(s) {
+  s_kpi <- readRDS(kmer_per_ind_sub[s])
+  kpi <- do.call(bind_rows, lapply(names(s_kpi), function(g) {
+    data.frame(group = g,
+               n_ind = names(s_kpi[[g]]),
+               n_kmer = as.numeric(s_kpi[[g]]),
+               sub = s)
+  }))
+  return(kpi)
+}))
+
+kmer_per_ind_sum <- kmer_per_ind %>% 
+  group_by(group, n_ind) %>% 
+  summarise(n_kmer = sum(n_kmer)) %>% 
+  mutate(n_ind = factor(n_ind, str_sort(unique(n_ind), numeric = T)))
+
+
+ggplot(kmer_per_ind_sum %>% filter(group != "hb")) + 
+  facet_wrap(vars(group), scales = "free") +
+  geom_col(aes(x = n_ind, y = n_kmer, fill = group)) +
+  theme_minimal() + 
+  xlab("Number of individuals") + 
+  ylab("Number of k-mers") + 
+  scale_fill_manual(values = group_col[-c(6,8)])
+```
+
+distribution of genetic offset
+```{r}
+ggplot(go_all %>% filter(group != "hybrid")) +
+  facet_grid(rows = vars(group)) +
+  geom_histogram(aes(x = offset, fill = group), binwidth = 0.03, show.legend = F) +
+  geom_vline(data = filter(go_all, group == "AG"), aes(xintercept = mean(offset), color = "black")) +
+  geom_vline(data = filter(go_all, group == "C"), aes(xintercept = mean(offset), color = "black")) +
+  geom_vline(data = filter(go_all, group == "D"), aes(xintercept = mean(offset), color = "black")) +
+  geom_vline(data = filter(go_all, group == "ER"), aes(xintercept = mean(offset), color = "black")) +
+  geom_vline(data = filter(go_all, group == "OB"), aes(xintercept = mean(offset), color = "black")) +
+  scale_fill_manual(values = group_col[1:5]) +
+  scale_color_manual(values = group_col[1:5]) +
+  theme_minimal() +
+  theme(strip.text.y = element_text(size = 15, angle = 0),
+        strip.background = element_rect(fill = NA, color = "gray")) +
+  xlab("Genomic offset") +
+  ylab("Count")
+
+ggplot(go_all %>% filter(group != "hybrid")) +
+  # facet_grid(rows = vars(group)) +
+  geom_point(aes(x = Long.y, y = offset, color = group)) +
+  scale_color_manual(values = group_col[1:5]) +
+  theme_minimal()
+```
+
+
+
+## best gennotypes (migration)
+```{r}
+best_geno <- go_all %>% 
+  filter(group != "hybrid") %>% 
+  group_by(model, occurrence) %>% 
+  # arrange(offset) %>% 
+  # slice_head(n = 1)
+  slice_min(offset)
+  # mutate(locate = "vietnam") %>% 
+  # mutate(Lat = Lat*10-110,
+  #        Long = Long*10-1000)
+
+ad_pol <- dt_pol
+ad_pol$geometry[[1]] <- ad_pol$geometry[[1]]*10
+
+best_origin <- best_present %>% 
+  dplyr::select(-c(Long, Lat)) %>% 
+  mutate(locate = "africa") %>% 
+  left_join(., af_clim %>% 
+              rownames_to_column("Label") %>% 
+              dplyr::select(Label, Long, Lat) %>% 
+              mutate(locate = "africa"))
+
+mig_present <- bind_rows(best_present, best_origin)
+
+library(mapinsetr)
+ggplot() +
+  geom_sf(data = af, fill = "white", color = "gray", size = 0.3) +
+  geom_sf(data = st_as_sf(vn), fill = "white", color = "#77a37b", size = 0.3) +
+  geom_point(data = best_present, aes(x = Long.x, y = Lat.x, color = group), size = 1) +
+  geom_point(data = best_present, aes(x = Long.y, y = Lat.y, color = group), size = 0.1) +
+  geom_line(data = mig_present, 
+            aes(x = Long, y = Lat, 
+                color = group,
+                group = occurrence),
+                alpha = 0.2) +
+  scale_color_manual(values = c(group_col[1:5], "hybrid" = "gray")) +
+  theme_void() +
+  coord_sf(expand = F) +
+  ylim(c(-15, 25))
+
+
+best_plots <- lapply(unique(best_geno$model), function(m) {
+  best_model <- best_geno %>% filter(model == m)
+  pl <- ggplot() +
+    geom_sf(data = dt_pol, fill = "white", color = "#77a37b", size = 0.3) +
+    geom_sf(data = vn_pol, fill = NA, color = "#255429", linewidth = .6) + 
+    geom_point(data = best_model, aes(x = Long.y, y = Lat.y, color = group), size = 1) +
+               # show.legend = (m == "present, 1970-2000")) +
+    # geom_line(data = mig_present, 
+    #           aes(x = Long, y = Lat, 
+    #               color = group,
+    #               group = occurrence),
+    #               alpha = 0.2) +
+    scale_color_manual(values = c(group_col[1:5], "hybrid" = "gray")) +
+    theme_void() +
+    theme(legend.text = element_text(size = 12),
+          legend.title = element_text(size = 12),
+          plot.title = element_text(hjust = 0.5, size = 12),
+          plot.margin = unit(c(0,2,0,2), "cm")) +
+    ggtitle(ifelse(grepl("present", m), "Present", m)) +
+  guides(colour = guide_legend(override.aes = list(size = 3)))
+  return(pl)
+})
+
+tiff("/shared/projects/most_kmer/paper_plot/offset_best_all.tiff", 
+     width = 15, height = 15, units = "in", res = 1200)
+plot_list(best_plots[[7]], best_plots[[1]], best_plots[[2]],
+          ggplot() + theme_void(), best_plots[[3]], best_plots[[4]],
+          ggplot() + theme_void(), best_plots[[5]], best_plots[[6]],
+          labels = c(LETTERS[1:3], "", LETTERS[4:5], "", LETTERS[6:7]))
+dev.off()
+```
+
+
+```{r}
+worst_geno <- go_all %>% 
+  filter(group != "hybrid") %>% 
+  group_by(model, occurrence) %>% 
+  slice_max(offset)
+
+worst_plots <- lapply(unique(worst_geno$model), function(m) {
+  worst_model <- worst_geno %>% filter(model == m)
+  pl <- ggplot() +
+    geom_sf(data = dt_pol, fill = "white", color = "#77a37b", size = 0.3) +
+    geom_sf(data = vn_pol, fill = NA, color = "#255429", linewidth = .6) + 
+    geom_point(data = worst_model, aes(x = Long.y, y = Lat.y, color = group), size = 1) +
+               # show.legend = (m == "present, 1970-2000")) +
+    # geom_line(data = mig_present, 
+    #           aes(x = Long, y = Lat, 
+    #               color = group,
+    #               group = occurrence),
+    #               alpha = 0.2) +
+    scale_color_manual(values = c(group_col[1:5], "hybrid" = "gray")) +
+    theme_void() +
+    theme(legend.text = element_text(size = 12),
+          legend.title = element_text(size = 12),
+          plot.title = element_text(hjust = 0.5),
+          plot.margin = unit(c(0,2,0,2), "cm")) +
+    ggtitle(ifelse(grepl("present", m), "Present", m)) +
+  guides(colour = guide_legend(override.aes = list(size = 3)))
+  return(pl)
+})
+
+tiff("/shared/projects/most_kmer/paper_plot/offset_worst_all.tiff", 
+     width = 15, height = 15, units = "in", res = 1200)
+plot_list(worst_plots[[7]], worst_plots[[1]], worst_plots[[2]],
+          ggplot() + theme_void(), worst_plots[[3]], worst_plots[[4]],
+          ggplot() + theme_void(), worst_plots[[5]], worst_plots[[6]],
+          labels = c(LETTERS[1:3], "", LETTERS[4:5], "", LETTERS[6:7]))
+dev.off()
+```
+
+
+```{r}
+tiff("/shared/projects/most_kmer/paper_plot/offset_cnrm.tiff", 
+     width = 10, height = 10, units = "in", res = 1200)
+plot_list(best_plots[[7]] + ggtitle("Most suitable in 1970-2000"), 
+          best_plots[[2]] + ggtitle("Most suitable in 2041-2060"),
+          worst_plots[[7]] + ggtitle("Least suitable in 1970-2000"), 
+          worst_plots[[2]] + ggtitle("Least suitable in 2041-2060"),
+          labels = LETTERS[1:4])
+dev.off()
+```
+
+
+## common best/worst genotypes between future predictions
+
+```{r}
+fut_best <- best_geno %>% 
+  filter(model != "present, 1970-2000") %>% 
+  group_by(Label, occurrence) %>% 
+  mutate(count = n()) %>% 
+  distinct(Label, occurrence, Long.x, Lat.x, Long.y, Lat.y, district, province, group, count) %>% 
+  group_by(occurrence) %>% 
+  arrange(desc(count)) %>% 
+  slice_head(n = 1) %>% 
+  mutate(group = if_else(count > 4, group, "NA")) %>% 
+  mutate(group = factor(group, c("AG", "C", "D", "ER", "OB", "NA")))
+
+fut_best_plot <- ggplot() +
+  geom_sf(data = dt_pol, fill = "white", color = "#77a37b", size = 0.3) +
+  geom_sf(data = vn_pol, fill = NA, color = "#255429", linewidth = .6) + 
+  geom_point(data = fut_best, aes(x = Long.y, y = Lat.y, color = group), size = 1) +
+             # show.legend = (m == "present, 1970-2000")) +
+  # geom_line(data = mig_present, 
+  #           aes(x = Long, y = Lat, 
+  #               color = group,
+  #               group = occurrence),
+  #               alpha = 0.2) +
+  scale_color_manual(values = c(group_col[1:5], "NA" = "gray60")) +
+  theme_void() +
+  theme(legend.text = element_text(size = 12),
+        legend.title = element_text(size = 12),
+        plot.title = element_text(hjust = 0.5),
+        plot.margin = unit(c(0,2,0,2), "cm")) +
+  guides(colour = guide_legend(override.aes = list(size = 3)))
+```
+
+
+```{r}
+fut_worst <- worst_geno %>% 
+  filter(model != "present, 1970-2000") %>% 
+  group_by(Label, occurrence) %>% 
+  mutate(count = n()) %>% 
+  distinct(Label, occurrence, Long.x, Lat.x, Long.y, Lat.y, district, province, group, count) %>% 
+  group_by(occurrence) %>% 
+  arrange(desc(count)) %>% 
+  slice_head(n = 1) %>% 
+  mutate(group = if_else(count > 4, group, "NA")) %>% 
+  mutate(group = factor(group, c("AG", "C", "D", "ER", "OB", "NA")))
+
+fut_worst_plot <- ggplot() +
+    geom_sf(data = dt_pol, fill = "white", color = "#77a37b", size = 0.3) +
+    geom_sf(data = vn_pol, fill = NA, color = "#255429", linewidth = .6) + 
+    geom_point(data = fut_worst, aes(x = Long.y, y = Lat.y, color = group), size = 1) +
+               # show.legend = (m == "present, 1970-2000")) +
+    # geom_line(data = mig_present, 
+    #           aes(x = Long, y = Lat, 
+    #               color = group,
+    #               group = occurrence),
+    #               alpha = 0.2) +
+    scale_color_manual(values = c(group_col[1:5], "NA" = "gray60")) +
+    theme_void() +
+    theme(legend.text = element_text(size = 12),
+          legend.title = element_text(size = 12),
+          plot.title = element_text(hjust = 0.5),
+          plot.margin = unit(c(0,2,0,2), "cm")) +
+  guides(colour = guide_legend(override.aes = list(size = 3)))
+```
+
+```{r}
+tiff("/shared/projects/most_kmer/paper_plot/offset_common.tiff", 
+     width = 10, height = 10, units = "in", res = 1200)
+plot_list(best_plots[[7]] + ggtitle("Most suitable in 1970-2000"), 
+          fut_best_plot + ggtitle("Most suitable in 2041-2060"),
+          worst_plots[[7]] + ggtitle("Least suitable in 1970-2000"), 
+          fut_worst_plot + ggtitle("Least suitable in 2041-2060"),
+          labels = LETTERS[1:4])
+dev.off()
+```
+
+
+```{r}
+p <- st_read(system.file("shape/nc.shp", package="sf"))
+p <- st_transform(p, 32119) #state plane meters
+
+p <- dt_pol
+p <- st_transform(p)
+p <- st_cast(p, "POLYGON")
+
+
+f <- function(z, xscale=2, yscale=3) { 
+       np <- st_polygon(list(st_coordinates(z)[,1:2]))
+         cbind(st_as_sf(st_sfc(np * c(xscale,yscale)-100),crs = st_crs(p)),z)
+  }
+
+
+shift <- st_sf(st_sfc(),crs = st_crs(p))
+for(i in 1:nrow(p)) {
+  shift <- rbind( shift, f(p[i,], 10, 10))
+}
+
+plot(st_geometry(shift))
+plot(st_geometry(p))
+```
+
+```{r}
+library(rgeos)
+p1 = readWKT("POLYGON((0 1,0.95 0.31,0.59 -0.81,-0.59 -0.81,-0.95 0.31,0 1))")
+p2 = readWKT("POLYGON((2 2,-2 2,-2 -2,2 -2,2 2),(1 1,-1 1,-1 -1,1 -1,1 1))")
+
+p1 <- as_Spatial(dt_pol)[1]
+
+par(mfrow=c(2,3))
+plot(gBuffer(p1,width=-0.2),col='black',xlim=c(-1.5,1.5),ylim=c(-1.5,1.5))
+plot(p1,border='blue',lwd=2,add=TRUE);title("width: -0.2")
 ```
 
