@@ -1,0 +1,62 @@
+__default__:
+    cpus-per-task : 4
+    mem-per-cpu : 10G
+    partition : "long"
+    output : '/shared/projects/most_kmer/kiss_af/log/{rule}/{wildcards}.log'
+    error : '/shared/projects/most_kmer/kiss_af/log/{rule}/{wildcards}.log'
+    job-name : '{rule}.{wildcards}'
+
+kmers_gwas_per_sample:
+    cpus-per-task : 10
+    mem-per-cpu : 10G
+    partition : "long"
+
+kmers_to_use:
+    cpus-per-task : 1
+    mem-per-cpu : 10G
+    partition : "long"
+
+kmers_table:
+    cpus-per-task : 1
+    mem-per-cpu : 10G
+    partition : "long"
+
+extract_kmers_from_bed:
+    cpus-per-task : 1
+    mem-per-cpu : 10G
+    partition : "long"
+
+mapping_kmers:
+    cpus-per-task : 1
+    mem-per-cpu : 10G
+    partition : "long"
+
+filter_bam:
+    cpus-per-task : 1
+    mem-per-cpu : 10G
+    partition : "long"
+
+kmer_position_from_bam:
+    cpus-per-task : 1
+    mem-per-cpu : 10G
+    partition : "long"
+
+merge_kmer_position:
+    cpus-per-task : 1
+    mem-per-cpu : 10G
+    partition : "long"
+
+pcadapt:
+    cpus-per-task : 1
+    mem-per-cpu : 40G
+    partition : "long"
+
+merge_pcadapt:
+    cpus-per-task : 2
+    mem-per-cpu : 5G
+    partition : "long"
+
+rule_graph:
+    output : '/shared/projects/most_kmer/kiss_af/log/{rule}/rule_graph.log'
+    error : '/shared/projects/most_kmer/kiss_af/log/{rule}/rule_graph.log'
+    job-name : '{rule}'

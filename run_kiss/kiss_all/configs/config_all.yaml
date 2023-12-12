@@ -1,0 +1,29 @@
+DATA:
+    FASTQ: '/scratch/kmer/all_fastq_cleaned'
+    REF: '/scratch/kmer/test_kiss/reference/CC1.8_v2_pseudomolecule_cat.fa'
+    SAMPLES: '/scratch/kmer/all_kiss/config/all_sample.txt'
+    OUTPUT: '/scratch/kmer/all_kiss/'
+
+WORKFLOW:
+    KMERS_GWAS : true
+    MAPPING: false
+
+PARAMS:
+    KMERS_GWAS:
+        kmer_size : 31
+        ci : 2
+        mac : 2
+        p : 0.2
+        maf : 0.05
+        b : 100000000 # nb kmers in each bed file
+        SPLIT_LIST_SIZE : 1000000
+        MIN_LIST_SIZE : 5000000
+    MAPPING:
+        # type bwa-aln or bwa-mem2
+        mode : bwa-aln
+        # If bwa-aln "-a bwtsw" or "" . If bwa-mem2 leaf empty
+        index_options: "-a bwtsw"
+        #index_options: " "
+        # if bwa-mem2 default parameters -A 1 -B 4; if bwa-aln -n [0.04] 2 diff by 30 pb
+        options : "-n 0.04"
+        #options : "-A 1 -B 4"
