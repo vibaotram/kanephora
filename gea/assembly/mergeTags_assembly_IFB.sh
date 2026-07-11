@@ -9,4 +9,4 @@
 #SBATCH --output /shared/projects/most_kmer/afterkiss/gea/assembly/slurm-%x.log
 
 cd /shared/projects/most_kmer/afterkiss/gea/assembly/
-./dekupl-mergeTags/mergeTags -k 31 -m 15 -n candidates_rda_lfmm.txt > mergeTags_significant_lfmm_rda.tsv
+./dekupl-mergeTags/mergeTags -k 31 -m 15 -n ../lfmm_rda/all_candidates_rda_lfmm.txt > mergeTags_significant_lfmm_rda_rerun.tsv

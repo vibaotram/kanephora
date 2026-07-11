@@ -17,13 +17,14 @@ library(superheat)
 library(cowplot)
 library(smplot2)
 library(ggpubr)
+library(aplot)
 ```
 
 ```{r}
-group_col <- c("#30123BFF", "#28BBECFF", "#94e637", "#FB8022FF", "#7A0403FF", "gray", "gray50", "black")
+group_col <- c("#30113BFF", "#28BBECFF", "#94e637", "#FB8022FF", "#8A0000CF", "gray", "gray50", "black")
 names(group_col) <- c("ER", "OB", "C", "AG", "D", "admixed", "VN present (1970-2000)", "VN future (2041-2060)")
 
-group_col_af <- c("#30123BFF", "#28BBECFF", "#A2FC3CFF", "#FB8022FF", "#7A0403FF", "gray")
+group_col_af <- c("#30113BFF", "#28BBECFF", "#A2FC3CFF", "#FB8022FF", "#8A0000CF", "gray")
 names(group_col_af) <- c("ER", "OB", "C", "AG", "D", "hybrid")
 ```
 
@@ -101,9 +102,11 @@ ggplot() +
 ## Project VN bioclim data to PCA of African bioclim
 
 ```{r}
-af_clim_file <- "../bioclim/climatic_variables_af_wc2.1.csv"
+# af_clim_file <- "../bioclim/climatic_variables_af_wc2.1.csv"
+af_clim_file <- "/shared/projects/most_kmer/afterkiss/bioclim/updated_bioclim_AF.csv"
 # af_clim_file <- "../bioclim/climatic_variables_af_chelsa.csv"
 allaf_clim <- read.csv(af_clim_file)
+allaf_clim <- allaf_clim[, !colnames(allaf_clim) %in% c("bio_10", "bio_1", "bio_3", "bio_14", "bio_9", "bio_16")]
 # af_clim <- af_clim %>% 
 #   # select(1:20) %>% 
 #   column_to_rownames("Label") %>% 
@@ -115,7 +118,7 @@ allaf_clim <- read.csv(af_clim_file)
 #                            # group == "hb" ~ "admixed",
 #                            TRUE ~ group)) 
 
-snmf_assign <- read.csv("../af_samples_ancestry_kmers.csv")
+snmf_assign <- read.csv("/shared/projects/most_kmer/afterkiss/structure/af_samples_ancestry_kmers.csv")
 allaf_clim <- left_join(allaf_clim, snmf_assign, by = "Label") %>% 
   # dplyr::rename(group = assign) %>% 
   column_to_rownames("Label")
@@ -138,19 +141,19 @@ rbind(af_clim %>% dplyr::select(1:19, group),
 ```
 
 ```{r}
-afclim_pca <- prcomp(af_clim[,1:19], scale. = T)
+afclim_pca <- prcomp(af_clim[, grepl("bio", colnames(af_clim))], scale. = T)
 summary(afclim_pca)
 var_plot <- ggbiplot::ggscreeplot(afclim_pca) + 
   theme_minimal() +
   theme(axis.title = element_text(size = 14)) +
   ylab("Proportion of explained variance") +
   xlab("Principal component number")
-autoplot(afclim_pca, x = 1, y = 2,
+afprs <- autoplot(afclim_pca, x = 1, y = 2,
          data = af_clim, colour = 'group', size = 2,
          loadings = TRUE, loadings.colour = 'blue',
          loadings.label = TRUE, loadings.label.size = 6, 
          loadings.label.repel = T,
-         loadings.label.colour = "blue", frame = T) +
+         loadings.label.colour = "blue", frame = F) +
   theme_minimal() + 
   scale_colour_manual(values = group_col[1:5]) +
   scale_fill_manual(values = group_col[1:5]) 
@@ -169,16 +172,20 @@ sort(eig[,1]/sum(eig[,1]))
 ## contribution on PC2
 sort(eig[,2]/sum(eig[,2]))
 ## contribution of temp vars (bio1-bio11) on PC1
-sum(eig[1:11,1]/sum(eig[,1]))
+sum(eig[1:7,1]/sum(eig[,1]))
 ## contribution of temp vars (bio1-bio11) on PC1
-sum(eig[1:11,2]/sum(eig[,2]))
+sum(eig[1:7,2]/sum(eig[,2]))
 ```
 
 ```{r}
-all_clim <- bind_rows(af_clim %>% dplyr::select(1:20, group) %>% mutate(province = "Africa"),
-                  rob_ch_clim %>% dplyr::select(1:20, group, province, district))
+all_clim <- bind_rows(af_clim %>% 
+                        dplyr::select(starts_with("bio"), group) %>%
+                        mutate(province = "Africa"),
+                  rob_ch_clim %>% 
+                    dplyr::select(grep("bio", colnames(af_clim), value = T), 
+                                  group, province, district))
 
-vnclim_sc <- scale(rob_ch_clim[,1:19], center = afclim_pca$center)
+vnclim_sc <- scale(rob_ch_clim[,grep("bio", colnames(af_clim), value = T)], center = afclim_pca$center)
 vnclim_pd <- vnclim_sc %*% afclim_pca$rotation
 
 climproj <- afclim_pca
@@ -188,7 +195,7 @@ climproj_mp <- cbind(climproj$x,
                       dplyr::select(province, district, group)) %>%
   mutate(district = if_else(is.na(district), group, district)) %>% 
   group_by(district, group) %>% 
-  summarise(across(PC1:PC19, mean))
+  summarise(across(PC1:PC13, mean))
 vn_prs12 <- autoplot(climproj, x = 1, y = 2,
          data = all_clim, colour = 'group', size = 1, 
          shape = 16,
@@ -200,8 +207,7 @@ vn_prs12 <- autoplot(climproj, x = 1, y = 2,
   theme_minimal() + 
   theme(axis.title = element_text(size = 14)) +
   scale_colour_manual(values = c(group_col[1:5], "Vietnam" = "gray50")) +
-  scale_fill_manual(values = c(group_col[1:5], "Vietnam" = "gray50")) +
-  xlab("PC1 (36.7%)")
+  scale_fill_manual(values = c(group_col[1:5], "Vietnam" = "gray50"))
 
 vn_prs13 <- autoplot(climproj, x = 1, y = 3,
          data = all_clim, colour = 'group', size = 1, 
@@ -214,8 +220,7 @@ vn_prs13 <- autoplot(climproj, x = 1, y = 3,
   theme_minimal() + 
   theme(axis.title = element_text(size = 14)) +
   scale_colour_manual(values = c(group_col[1:5], "Vietnam" = "gray50")) +
-  scale_fill_manual(values = c(group_col[1:5], "Vietnam" = "gray50")) +
-  xlab("PC1 (36.7%)") + ylab("PC3 (18.2%)")
+  scale_fill_manual(values = c(group_col[1:5], "Vietnam" = "gray50"))
   # scale_shape_manual(values = c(16, 0:3, 8, 10), name = "location") 
   # ggtitle("Present climate")
   # ggtitle("Projection of VN present bioclimate \non PCA of African present bioclimate")
@@ -377,13 +382,13 @@ predict_yield <- function(future_file, all_clim, climproj, yield_lm, current_yie
     column_to_rownames("Label") %>% 
     filter(!province %in% c("Lâm Đồng", "Bình Định", "Bình Phước", "Khánh Hòa")) %>% 
     dplyr::rename(group = snp_group) %>% 
-    dplyr::select(starts_with("bio"), group, province, district)
+    dplyr::select(grep("bio", colnames(all_clim), value = T), group, province, district)
   all_clim$group[all_clim$group == "Vietnam"] <- "VN present (1970-2000)"
   prs_fut_clim <- bind_rows(all_clim %>% rownames_to_column("Label"),
                             bc_future_vn %>% mutate(group = "VN future (2041-2060)") %>% rownames_to_column("Label"))
   
   ## project future data on pca of african present data
-  futclim_sc <- scale(bc_future_vn[,1:19], 
+  futclim_sc <- scale(bc_future_vn[,1:13], 
                       center = climproj$center)
   futclim_pd <- futclim_sc %*% climproj$rotation
   futclimproj <- climproj
@@ -497,7 +502,7 @@ predict_yield <- function(future_file, all_clim, climproj, yield_lm, current_yie
     scale_y_continuous(limits = c(-1.2, 1.5), expand = c(0, 0)) +
     # scale_fill_manual(values = c("#c4b256", "#58875d")) +
     scale_fill_gradientn(colors = c("#c9ab12", "#d4c266", "white", "#83c78a", "#4d9454", "#2d6b34", "#1a451f"),
-                         limit = c(-50, 100),
+                         limit = c(-50, 120),
                          guide = guide_colorbar(title = "% Change")) +
     ggtitle(title)
     # ggtitle(paste0("Prediction of yield in years 2041-2060 (", title, ")"))
@@ -527,7 +532,7 @@ predict_yield <- function(future_file, all_clim, climproj, yield_lm, current_yie
     geom_point(data = map, aes(x = Long, y = Lat), color = "black", alpha = .3, size = 1, shape = 16) +
     theme_void() +
     scale_fill_gradientn(colors = c("#c9ab12", "#d4c266", "white", "#83c78a", "#4d9454", "#2d6b34", "#1a451f"),
-                         limit = c(-50, 100),
+                         limit = c(-50, 120),
                          guide = guide_colorbar(title = "% Change")) + # "Change in  yield\n(% current yield)"
     theme(legend.text = element_text(size = 12),
           legend.title = element_text(size = 12),
@@ -549,7 +554,7 @@ bc_future_vn <- bc_future_vn %>%
   column_to_rownames("Label") %>% 
   filter(!province %in% c("Lâm Đồng", "Bình Định", "Bình Phước", "Khánh Hòa")) %>% 
   dplyr::rename(group = snp_group) %>% 
-  dplyr::select(starts_with("bio"), group, province, district) # %>% 
+  dplyr::select(grep("bio", colnames(allaf_clim), value = T), group, province, district) # %>%
   # mutate(bio_3 = bio_3*100)
 ```
 
@@ -559,7 +564,7 @@ prs_fut_clim <- bind_rows(all_clim,
 
 futclim_sc <- scale(prs_fut_clim %>% 
                       filter(group == "Vietnam 2041-2060") %>% 
-                      dplyr::select(1:19), 
+                      dplyr::select(1:13), 
                     center = afclim_pca$center)
 futclim_pd <- futclim_sc %*% afclim_pca$rotation
 
@@ -572,7 +577,7 @@ mid_points <- cbind(futclimproj$x,
                       dplyr::select(province, district, group)) %>%
   mutate(district = if_else(is.na(district), group, district)) %>% 
   group_by(district, group) %>% 
-  summarise(across(PC1:PC19, mean))
+  summarise(across(PC1:PC13, mean))
 autoplot(futclimproj, x = 1, y = 2,
          data = prs_fut_clim %>% filter(group != "Vietnam"), 
          colour = 'group', size = 2,  
@@ -676,14 +681,14 @@ ggplot(yield_change, aes(x = district, y = yield_change)) +
 (colSums(pred_yield) - sum(yield$yield))/sum(yield$yield)*100
 ```
 
-```{r}
-pred <- predict_yield(future_file = future_data, 
-                      af_clim_pca = afclim_pca, 
-                      yield_lm = yd_rel,
-                      current_yield = yield %>% filter(district %in% rob_ch_clim$district),
-                      map = rob_ch_clim)
+```{r predict_yield_all}
+# pred <- predict_yield(future_file = future_data, 
+#                       af_clim_pca = afclim_pca, 
+#                       yield_lm = yd_rel,
+#                       current_yield = yield %>% filter(district %in% rob_ch_clim$district),
+#                       map = rob_ch_clim)
 
-future_data <- list.files("../bioclim", "wc2.1_30s_bioc_.+_2041-2060_640occ_VN.csv", full.names = T)
+future_data <- list.files("bioclim", "wc2.1_30s_bioc_.+_2041-2060_640occ_VN.csv", full.names = T)
 
 
 distER_yield <- dist_yield %>% filter(group == "ER")
@@ -703,7 +708,7 @@ future_yield_pred <- lapply(future_data, function(f) {
 significance between climate distance of 5 groups
 ```{r}
 fut_mean_dist <- do.call(rbind, lapply(future_yield_pred, function(f) {
-  df <- f$climchange # %>% 
+  df <- f$climchange %>% 
     group_by(scenario, group) %>%
     summarise(mean_dist = mean(fut_euclidean_distance),
            sd_dist = sd(fut_euclidean_distance))
@@ -743,13 +748,13 @@ ggplot(data = clim_dist,
 
 library(aplot)
 
-plot_list(vn_prs, future_yield_pred[[1]]$projection, future_yield_pred[[2]]$projection,
+plot_list(vn_prs12, future_yield_pred[[1]]$projection, future_yield_pred[[2]]$projection,
           ggplot() + theme_void(), future_yield_pred[[3]]$projection,
           future_yield_pred[[4]]$projection,
           ggplot() + theme_void(), future_yield_pred[[5]]$projection,
           future_yield_pred[[6]]$projection)
 
-tiff("/shared/projects/most_kmer/paper_plot/predict_yield_all.tiff", 
+png("/shared/projects/most_kmer/paper_plot/predict_yield_all.png", 
      width = 30, height = 10, units = "in", res = 720)
 plot_list(future_yield_pred[[1]]$yield, future_yield_pred[[1]]$map,
           future_yield_pred[[3]]$yield, future_yield_pred[[3]]$map,
@@ -759,8 +764,24 @@ plot_list(future_yield_pred[[1]]$yield, future_yield_pred[[1]]$map,
           future_yield_pred[[6]]$yield, future_yield_pred[[6]]$map,
           ncol = 6, widths = c(3,1),
           labels = LETTERS[1:12])
+ggarrange(future_yield_pred[[1]]$yield, future_yield_pred[[1]]$map,
+          future_yield_pred[[3]]$yield, future_yield_pred[[3]]$map,
+          future_yield_pred[[5]]$yield, future_yield_pred[[5]]$map, 
+          future_yield_pred[[2]]$yield, future_yield_pred[[2]]$map,
+          future_yield_pred[[4]]$yield, future_yield_pred[[4]]$map,
+          future_yield_pred[[6]]$yield, future_yield_pred[[6]]$map,
+          ncol = 6, nrow = 2, common.legend = T, widths = rep(c(3,1), 3),
+          labels = LETTERS[1:12])
 dev.off()
 
+tiff("/shared/projects/most_kmer/paper_plot/climate_af_vn.tiff", 
+     width = 15, height = 10, units = "in", res = 720)
+png("/shared/projects/most_kmer/paper_plot/climate_af_vn.png", 
+     width = 12, height = 5, units = "in", res = 720)
+plot_list(afprs, 
+          future_yield_pred[[2]]$projection + ggtitle("") + theme(legend.position = "right"),
+          labels = LETTERS[1:2])
+dev.off()
 
 fut_dist <- do.call(rbind, lapply(future_yield_pred, function(f) {
   df <- f$climchange 
@@ -782,7 +803,7 @@ clim_test <- do.call(rbind, lapply(unique(all_clim_dist$scenario), function(s) {
   return(sig)
 }))
 
-tiff("/shared/projects/most_kmer/paper_plot/mean_yield_all.tiff", 
+tiff("/shared/projects/most_kmer/paper_plot/mean_climate_all.tiff", 
      width = 13, height = 4, units = "in", res = 1200)
 left_join(clim_test, 
           clim_dist %>% dplyr::rename(ancestry = group),
@@ -827,28 +848,28 @@ var_plot
 vn_prs12_ld <- autoplot(afclim_pca, x = 1, y = 2,
          data = af_clim, colour = 'group', size = 1,
          # alpha = 0,
-         loadings = T, loadings.colour = 'blue',
+         loadings = T, loadings.colour = 'gray',
          loadings.label = T, loadings.label.size = 4,
          loadings.label.repel = T,
-         loadings.label.colour = "blue", frame = F) +
+         loadings.label.colour = "gray20", frame = F) +
   theme_minimal() + 
   theme(axis.title = element_text(size = 14)) +
   scale_colour_manual(values = c(group_col[1:5], "Vietnam" = "gray50")) +
-  scale_fill_manual(values = c(group_col[1:5], "Vietnam" = "gray50")) +
-  xlab("PC1 (36.7%)")
+  scale_fill_manual(values = c(group_col[1:5], "Vietnam" = "gray50")) 
+  # xlab("PC1 (36.7%)")
 
 vn_prs13_ld <- autoplot(afclim_pca, x = 1, y = 3,
          data = af_clim, colour = 'group', size = 1,
          # alpha = 0,
-         loadings = T, loadings.colour = 'blue',
+         loadings = T, loadings.colour = 'gray',
          loadings.label = T, loadings.label.size = 4,
          loadings.label.repel = T,
-         loadings.label.colour = "blue", frame = F) +
+         loadings.label.colour = "gray20", frame = F) +
   theme_minimal() + 
   theme(axis.title = element_text(size = 14)) +
   scale_colour_manual(values = c(group_col[1:5], "Vietnam" = "gray50")) +
-  scale_fill_manual(values = c(group_col[1:5], "Vietnam" = "gray50")) +
-  xlab("PC1 (36.7%)") + ylab("PC3 (18.2%)")
+  scale_fill_manual(values = c(group_col[1:5], "Vietnam" = "gray50")) 
+  # xlab("PC1 (36.7%)") + ylab("PC3 (18.2%)")
 
 
 tiff("/shared/projects/most_kmer/paper_plot/raw_pca.tiff", 
@@ -860,7 +881,7 @@ plot_list(var_plot, vn_prs12_ld, vn_prs13_ld,
 dev.off()
 
 
-tiff("/shared/projects/most_kmer/paper_plot/project_climate_all.tiff", 
+png("/shared/projects/most_kmer/paper_plot/project_climate_all.png", 
      width = 15, height = 9, units = "in", res = 1200)
 # plot_list(future_yield_pred[[1]]$projection, future_yield_pred[[3]]$projection, future_yield_pred[[5]]$projection,
 #           future_yield_pred[[2]]$projection, future_yield_pred[[4]]$projection, future_yield_pred[[6]]$projection,
@@ -877,12 +898,12 @@ ggarrange(future_yield_pred[[1]]$projection + theme(plot.margin = margin(.5,0.5,
 dev.off()
 
 tiff("/shared/projects/most_kmer/paper_plot/project_predict_cnrm.tiff", 
-     width = 20, height = 6, units = "in", res = 1200)
+     width = 12, height = 4, units = "in", res = 1000)
 plot_list(future_yield_pred[[2]]$projection + ggtitle("") + theme(legend.position = "right"), 
           future_yield_pred[[2]]$yield +
             ggtitle(""), 
-          future_yield_pred[[2]]$map +
-            geom_sf_text(data = vn_pol, aes(label = VARNAME_1), size = 7),
+          future_yield_pred[[2]]$map, #+
+            # geom_sf_text(data = vn_pol, aes(label = VARNAME_1), size = 7),
           labels = LETTERS[1:3],
           widths = c(2, 3, 1), heights = 2)
 dev.off()
@@ -1854,23 +1875,30 @@ ggplot() +
 ### present Africa to future Vietnam
 
 ```{r}
-go_results <- c("./present_1970-2000_640occ/",
-                "./CNRM-CM6-1_ssp126_2041-2060/", "./CNRM-CM6-1_ssp585_2041-2060/",
-                "./EC-Earth3-Veg_ssp126_2041-2060/", "./EC-Earth3-Veg_ssp585_2041-2060/", 
-                "./MRI-ESM2-0_ssp126_2041-2060/", "./MRI-ESM2-0_ssp585_2041-2060/")
-go_all <- do.call(rbind, lapply(go_results, function(f) {
-  cat(f)
-  md <- paste(str_split_fixed(basename(f), "_", 3)[1:2], collapse  = ", ")
-  go_data <- sum_go(f, afclim = allaf_clim %>% rownames_to_column("Label"))
-  go_out <- go_data$go
-  go_out$model <- md
-  go_out <- go_out #%>% dplyr::select(-c(bio_1:bio_19), group)
-  return(go_out)
-}))
+# go_results <- c("./present_1970-2000_640occ/",
+#                 "./CNRM-CM6-1_ssp126_2041-2060/", "./CNRM-CM6-1_ssp585_2041-2060/",
+#                 "./EC-Earth3-Veg_ssp126_2041-2060/", "./EC-Earth3-Veg_ssp585_2041-2060/", 
+#                 "./MRI-ESM2-0_ssp126_2041-2060/", "./MRI-ESM2-0_ssp585_2041-2060/")
+# go_all <- do.call(rbind, lapply(go_results, function(f) {
+#   cat(f)
+#   md <- paste(str_split_fixed(basename(f), "_", 3)[1:2], collapse  = ", ")
+#   go_data <- sum_go(f, afclim = allaf_clim %>% rownames_to_column("Label"))
+#   go_out <- go_data$go
+#   go_out$model <- md
+#   go_out <- go_out #%>% dplyr::select(-c(bio_1:bio_19), group)
+#   return(go_out)
+# }))
+# 
+# go_all <- go_all %>% 
+#   dplyr::select(-group) %>% 
+#   left_join(., snmf_assign)
 
+go_all <- read.csv("all_gap_rerun.csv")
 go_all <- go_all %>% 
-  dplyr::select(-group) %>% 
-  left_join(., snmf_assign)
+  mutate(model = gsub("_2041-2060", "", model)) %>% 
+  mutate(model = gsub("_", ", ", model)) %>% 
+  mutate(model = if_else(grepl("present", model), "present", model))
+
 
 go_all_sum <- go_all %>% 
   mutate(model = if_else(grepl("present", model), "present", model)) %>% 
@@ -1953,13 +1981,13 @@ go_map_list <- lapply(unique(go_all$model), function(s) {
             color = "#77a37b", size = 0.3) +
     geom_sf(data = vn_pol, fill = NA, color = "#255429") +
     geom_point(data = go_all %>% filter(group == "ER", model == s),
-               aes(x = Long.y, y = Lat.y, color = offset),
-               size = 1, show.legend = (s == "present, 1970-2000")) +
+               aes(x = long, y = lat, color = offset),
+               size = 1, show.legend = (s == "present")) +
     theme_void() +
     scale_color_gradient(low = "gray90", high = group_col["ER"],
-                         limits = c(0, 10),
+                         limits = c(0, .8),
                          # breaks = seq(0,2.5,.5),
-                         labels = c(0, "", 5, "", 10),
+                         # labels = c(0, "", 0.5, "", 1),
                          guide = guide_colorbar(title = "Genetic offset")) +
     theme(legend.text = element_text(size = 12),
           legend.title = element_text(size = 12),
@@ -1969,9 +1997,9 @@ go_map_list <- lapply(unique(go_all$model), function(s) {
   return(m)
 })
 
-plot_list(go_map_list[[1]], go_map_list[[2]], go_map_list[[3]], 
-          ggplot() + theme_void(), go_map_list[[4]], go_map_list[[5]],
-          ggplot() + theme_void(), go_map_list[[6]], go_map_list[[7]],
+plot_list(go_map_list[[7]], go_map_list[[1]], go_map_list[[2]], 
+          ggplot() + theme_void(), go_map_list[[3]], go_map_list[[4]],
+          ggplot() + theme_void(), go_map_list[[5]], go_map_list[[6]],
           nrow = 3, byrow = T)
 
 go_map_list <- lapply(unique(go_all$model), function(s) {
@@ -1982,13 +2010,13 @@ go_map_list <- lapply(unique(go_all$model), function(s) {
             color = "#77a37b", size = 0.3) +
     geom_sf(data = vn_pol, fill = NA, color = "#255429") +
     geom_point(data = go_all %>% filter(group == "AG", model == s),
-               aes(x = Long, y = Lat, color = offset),
+               aes(x = long, y = lat, color = offset),
                size = 1, show.legend = (s == "present, 1970-2000")) +
     theme_void() +
     scale_color_gradient(low = "gray90", high = group_col["AG"],
-                         limits = c(0, 10),
+                         limits = c(0, 0.6),
                          # breaks = seq(0,2.5,.5),
-                         labels = c(0, "", 5, "", 10),
+                         # labels = c(0, "", 5, "", 10),
                          guide = guide_colorbar(title = "Genetic offset")) +
     theme(legend.text = element_text(size = 12),
           legend.title = element_text(size = 12),
@@ -2010,7 +2038,7 @@ dev.off()
 list of genetic offset vs climate distance
 
 ```{r}
-tiff("/shared/projects/most_kmer/paper_plot/go_clim.tiff", 
+png("/shared/projects/most_kmer/paper_plot/go_clim.png", 
     width = 14, height = 8, units = "in", res = 1200)
 go_all %>% 
   mutate(model = if_else(grepl("present", model), "Present", model)) %>% 
@@ -2394,8 +2422,8 @@ library(mapinsetr)
 ggplot() +
   geom_sf(data = af, fill = "white", color = "gray", size = 0.3) +
   geom_sf(data = st_as_sf(vn), fill = "white", color = "#77a37b", size = 0.3) +
-  geom_point(data = best_present, aes(x = Long.x, y = Lat.x, color = group), size = 1) +
-  geom_point(data = best_present, aes(x = Long.y, y = Lat.y, color = group), size = 0.1) +
+  geom_point(data = best_present, aes(x = Long, y = Lat, color = group), size = 1) +
+  geom_point(data = best_present, aes(x = Long, y = Lat, color = group), size = 0.1) +
   geom_line(data = mig_present, 
             aes(x = Long, y = Lat, 
                 color = group,
@@ -2412,7 +2440,7 @@ best_plots <- lapply(unique(best_geno$model), function(m) {
   pl <- ggplot() +
     geom_sf(data = dt_pol, fill = "white", color = "#77a37b", size = 0.3) +
     geom_sf(data = vn_pol, fill = NA, color = "#255429", linewidth = .6) + 
-    geom_point(data = best_model, aes(x = Long.y, y = Lat.y, color = group), size = 1) +
+    geom_point(data = best_model, aes(x = long, y = lat, color = group), size = 1) +
                # show.legend = (m == "present, 1970-2000")) +
     # geom_line(data = mig_present, 
     #           aes(x = Long, y = Lat, 
@@ -2451,7 +2479,7 @@ worst_plots <- lapply(unique(worst_geno$model), function(m) {
   pl <- ggplot() +
     geom_sf(data = dt_pol, fill = "white", color = "#77a37b", size = 0.3) +
     geom_sf(data = vn_pol, fill = NA, color = "#255429", linewidth = .6) + 
-    geom_point(data = worst_model, aes(x = Long.y, y = Lat.y, color = group), size = 1) +
+    geom_point(data = worst_model, aes(x = long, y = lat, color = group), size = 1) +
                # show.legend = (m == "present, 1970-2000")) +
     # geom_line(data = mig_present, 
     #           aes(x = Long, y = Lat, 
@@ -2482,9 +2510,9 @@ dev.off()
 ```{r}
 tiff("/shared/projects/most_kmer/paper_plot/offset_cnrm.tiff", 
      width = 10, height = 10, units = "in", res = 1200)
-plot_list(best_plots[[7]] + ggtitle("Most suitable in 1970-2000"), 
+plot_list(best_plots[[7]] + ggtitle("Most suitable in present"), 
           best_plots[[2]] + ggtitle("Most suitable in 2041-2060"),
-          worst_plots[[7]] + ggtitle("Least suitable in 1970-2000"), 
+          worst_plots[[7]] + ggtitle("Least suitable in present"), 
           worst_plots[[2]] + ggtitle("Least suitable in 2041-2060"),
           labels = LETTERS[1:4])
 dev.off()
@@ -2496,9 +2524,9 @@ dev.off()
 ```{r}
 fut_best <- best_geno %>% 
   filter(model != "present, 1970-2000") %>% 
-  group_by(Label, occurrence) %>% 
+  group_by(ind, occurrence) %>% 
   mutate(count = n()) %>% 
-  distinct(Label, occurrence, Long.x, Lat.x, Long.y, Lat.y, district, province, group, count) %>% 
+  distinct(ind, occurrence, long, lat, district, province, group, count) %>% 
   group_by(occurrence) %>% 
   arrange(desc(count)) %>% 
   slice_head(n = 1) %>% 
@@ -2508,7 +2536,7 @@ fut_best <- best_geno %>%
 fut_best_plot <- ggplot() +
   geom_sf(data = dt_pol, fill = "white", color = "#77a37b", size = 0.3) +
   geom_sf(data = vn_pol, fill = NA, color = "#255429", linewidth = .6) + 
-  geom_point(data = fut_best, aes(x = Long.y, y = Lat.y, color = group), size = 1) +
+  geom_point(data = fut_best, aes(x = long, y = lat, color = group), size = 1) +
              # show.legend = (m == "present, 1970-2000")) +
   # geom_line(data = mig_present, 
   #           aes(x = Long, y = Lat, 
@@ -2528,9 +2556,9 @@ fut_best_plot <- ggplot() +
 ```{r}
 fut_worst <- worst_geno %>% 
   filter(model != "present, 1970-2000") %>% 
-  group_by(Label, occurrence) %>% 
+  group_by(ind, occurrence) %>% 
   mutate(count = n()) %>% 
-  distinct(Label, occurrence, Long.x, Lat.x, Long.y, Lat.y, district, province, group, count) %>% 
+  distinct(ind, occurrence, long, lat, district, province, group, count) %>% 
   group_by(occurrence) %>% 
   arrange(desc(count)) %>% 
   slice_head(n = 1) %>% 
@@ -2540,7 +2568,7 @@ fut_worst <- worst_geno %>%
 fut_worst_plot <- ggplot() +
     geom_sf(data = dt_pol, fill = "white", color = "#77a37b", size = 0.3) +
     geom_sf(data = vn_pol, fill = NA, color = "#255429", linewidth = .6) + 
-    geom_point(data = fut_worst, aes(x = Long.y, y = Lat.y, color = group), size = 1) +
+    geom_point(data = fut_worst, aes(x = long, y = lat, color = group), size = 1) +
                # show.legend = (m == "present, 1970-2000")) +
     # geom_line(data = mig_present, 
     #           aes(x = Long, y = Lat, 
@@ -2559,9 +2587,9 @@ fut_worst_plot <- ggplot() +
 ```{r}
 tiff("/shared/projects/most_kmer/paper_plot/offset_common.tiff", 
      width = 10, height = 10, units = "in", res = 1200)
-plot_list(best_plots[[7]] + ggtitle("Most suitable in 1970-2000"), 
+plot_list(best_plots[[7]] + ggtitle("Most suitable in present"), 
           fut_best_plot + ggtitle("Most suitable in 2041-2060"),
-          worst_plots[[7]] + ggtitle("Least suitable in 1970-2000"), 
+          worst_plots[[7]] + ggtitle("Least suitable in present"), 
           fut_worst_plot + ggtitle("Least suitable in 2041-2060"),
           labels = LETTERS[1:4])
 dev.off()
@@ -2602,5 +2630,192 @@ p1 <- as_Spatial(dt_pol)[1]
 par(mfrow=c(2,3))
 plot(gBuffer(p1,width=-0.2),col='black',xlim=c(-1.5,1.5),ylim=c(-1.5,1.5))
 plot(p1,border='blue',lwd=2,add=TRUE);title("width: -0.2")
+```
+
+## ER offset vs yield
+```{r}
+rm_district <- go_all %>% 
+  filter(group == "ER") %>% 
+  group_by(district) %>% 
+  distinct(occurrence) %>% 
+  summarise(n = n()) %>% 
+  filter(n < 4) %>% 
+  pull(district)
+
+er_offset <- go_all %>% 
+  filter(group == "ER") %>% 
+  group_by(model, district) %>% 
+  summarise(mean_offset = mean(offset)) %>% 
+  left_join(dist_yield %>% filter(group == "ER"))
+
+er_offset_prs <- er_offset %>% 
+  filter(model == "present")
+
+er_offset_fut <- er_offset %>% 
+  filter(model != "present")
+
+go_yield <- ggplot(er_offset, 
+       aes(x = mean_offset, y = yield)) + 
+  geom_point(color = group_col["ER"]) +
+  geom_smooth(method = 'lm', formula = y~x, color = group_col["ER"]) + 
+  theme_minimal() +
+  theme(axis.title = element_text(size = 14)) +
+  ylab("Yield (ton/ha)") +
+  xlab("Genetic offset")
+
+
+cor.test(er_offset_prs$mean_offset, er_offset_prs$yield)
+cor.test(er_offset_prs$mean_offset, er_offset_prs$euclidean_distance)
+
+yg_rel <- lm(yield~mean_offset, er_offset_prs)
+yg_pred <- predict.lm(yg_rel, 
+           er_offset_fut %>% dplyr::select(mean_offset),
+           interval = "confidence")
+
+
+yg_pred <- cbind(er_offset_fut, yg_pred) %>% 
+  mutate(predictor = "genetic offset")
+
+
+yc_pred <- do.call(rbind, lapply(future_yield_pred, function(i) {
+  m <- unique(i$climchange$scenario)
+  yd <- i$yield_change %>% 
+    dplyr::select(district, province, future_yield, lwr, upr) %>% 
+    rename(fit = future_yield) %>% 
+    mutate(model = m)
+  yd
+  # print(m)
+}))
+yc_pred <- left_join(er_offset_fut, yc_pred) %>% 
+  mutate(predictor = "climate")
+
+fut_yield <- rbind(yg_pred, yc_pred)
+
+fut_yield <- fut_yield %>% 
+  mutate(yield_change = fit - yield, 
+         yield_change_lwr = lwr - yield,
+         yield_change_upr = upr - yield) %>% 
+  arrange(yield_change) %>% 
+  mutate(district = factor(district, levels = unique(district)))
+
+## find most affected districts
+fut_yield %>% 
+  filter(predictor == "climate") %>% 
+  group_by(model) %>% 
+  summarise(tot = sum(abs(yield_change)))
+
+fut_yield %>% 
+  filter(predictor != "climate") %>% 
+  slice_min(yield_change)
+
+png("/shared/projects/most_kmer/paper_plot/predict_yield_clim_go.png", 
+     width = 20, height = 10, units = "in", res = 1200)
+ggplot(fut_yield, aes(x = district, y = yield_change, group = predictor)) + 
+  facet_wrap(~model, ncol = 1) + 
+  geom_col(aes(fill = yield_change/yield*100, color = predictor), 
+           width = 0.6, show.legend = T, position = position_dodge(width = 0.5)) + 
+  geom_errorbar(aes(ymin = yield_change_lwr, ymax = yield_change_upr, color = predictor), 
+                width = 0.3, position = position_dodge(width = 0.5)) +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 45),
+        axis.title = element_text(size = 15),
+        plot.title = element_text(hjust = 0, size = 20)) + 
+  xlab("District") +
+  ylab("Change in yield (ton/ha)") +
+  # ylim(c(-1.2, 1.5)) +
+  # scale_y_continuous(limits = c(-1.2, 1.5), expand = c(0, 0)) +
+  scale_color_manual(values = c("#3288d5", "black")) +
+  scale_fill_gradientn(colors = c("#c9ab12", "#d4c266", "white", "#83c78a", "#4d9454", "#2d6b34", "#1a451f"),
+                       limit = c(-50, 120),
+                       guide = guide_colorbar(title = "% Change")) 
+dev.off()
+
+yield_district <- ggplot(fut_yield %>% filter(model == "CNRM-CM6-1, ssp585"), 
+                         aes(x = district, y = yield_change, group = predictor)) + 
+  geom_col(aes(fill = yield_change/yield*100, color = predictor), 
+           width = 0.5, show.legend = F, position = position_dodge(width = 0.7)) + 
+  geom_errorbar(aes(ymin = yield_change_lwr, ymax = yield_change_upr, color = predictor), 
+                width = 0.3, position = position_dodge(width = 0.7)) +
+  geom_point(aes(fill = yield_change/yield*100), size = 0, alpha = 0) +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 6),
+        axis.title = element_text(size = 15),
+        plot.title = element_text(hjust = 0, size = 20),
+        legend.key= element_rect(fill = "white", color = "white")) + 
+  xlab("District") +
+  ylab("Change in yield (ton/ha)") +
+  # ylim(c(-1.2, 1.5)) +
+  # scale_y_continuous(limits = c(-1.2, 1.5), expand = c(0, 0)) +
+  scale_color_manual(values = c("#3288d5", "black"),
+                     name = "Predictor") +
+  scale_fill_gradientn(colors = c("#c9ab12", "#d4c266", "white", "#83c78a", "#4d9454", "#2d6b34", "#1a451f"),
+                       limit = c(-50, 120),
+                       guide = guide_colorbar(title = "% Change")) +
+  guides(color = guide_legend(override.aes = list(linewidth = 3)))
+
+clim_pred_map <- ggplot(merge(dt_pol, 
+             fut_yield %>% filter(model == "CNRM-CM6-1, ssp585", predictor == "climate"), 
+             by.x = "VARNAME_2", by.y = "district")) +
+  # facet_grid(cols = vars(predictor)) +
+  geom_sf(data = vn_pol, fill = "gray", color = "#5588d5", linewidth = .6) +
+  geom_sf(aes(fill = yield_change/yield*100), show.legend = F,
+          color = "#3288d5") +
+  # geom_point(data = rob_ch_clim, aes(x = Long, y = Lat), color = "black", alpha = .3, size = 1, shape = 16) +
+  theme_void() +
+  scale_fill_gradientn(colors = c("#c9ab12", "#d4c266", "white", "#83c78a", "#4d9454", "#2d6b34", "#1a451f"),
+                       limit = c(-50, 120),
+                       guide = guide_colorbar(title = "% Change")) + 
+  # ggtitle("climate") + 
+  theme(title = element_text(hjust = 0.5, size = 14))
+
+
+go_pred_map <- ggplot(merge(dt_pol, 
+             fut_yield %>% filter(model == "CNRM-CM6-1, ssp585", predictor != "climate"), 
+             by.x = "VARNAME_2", by.y = "district")) +
+  # facet_grid(cols = vars(predictor)) +
+  geom_sf(data = vn_pol, fill = "gray", color = "black", linewidth = .6) +
+  geom_sf(aes(fill = yield_change/yield*100), show.legend = F,
+          color = "gray40") +
+  # geom_point(data = rob_ch_clim, aes(x = Long, y = Lat), color = "black", alpha = .3, size = 1, shape = 16) +
+  theme_void() +
+  scale_fill_gradientn(colors = c("#c9ab12", "#d4c266", "white", "#83c78a", "#4d9454", "#2d6b34", "#1a451f"),
+                       limit = c(-50, 120),
+                       guide = guide_colorbar(title = "% Change")) +
+  # ggtitle("genetic offset") + 
+  theme(title = element_text(hjust = 0.5, size = 14))
+
+pred_map <- ggarrange(clim_pred_map, go_pred_map)
+png("/shared/projects/most_kmer/paper_plot/predict_yield_clim_go.png", 
+     width = 12, height = 4, units = "in", res = 1200)
+ggarrange(yield_district, pred_map, common.legend = T, widths = c(0.7, 0.25),
+          labels = LETTERS[1:2], legend = "right")
+dev.off()
+
+
+```
+
+
+## significant kmers for each bio variable in  lfmm
+```{r}
+library(qvalue)
+lfmm_files <- list.files("/shared/projects/most_kmer/afterkiss/gea/lfmm_rda/out", 
+                         "lfmm_results.tsv",
+                         recursive = T, full.names = T)
+
+f <- 0.01
+
+count_lfmm <- lapply(lfmm_files, function(lf) {
+  print(which(lfmm_files == lf))
+  r <- read.delim(lf)
+  count <- sapply(colnames(r), function(b) {
+    pv <- r[,b]
+    if (length(pv) == 0) return(0)
+    qv <- qvalue(pv, fdr.level = f, pfdr = T)
+    s <- which(qv$qvalues < f)
+    return(length(s))
+    })
+  return(count)
+})
+
 ```
 

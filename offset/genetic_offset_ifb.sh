@@ -10,10 +10,10 @@
 module load singularity
 
 
-latfac_file=/shared/projects/most_kmer/afterkiss/gea/lfmm_rda/latent_factors_15_9.txt
+latfac_file=/shared/projects/most_kmer/afterkiss/gea/lfmm_rda/latent_factors_15_9_updated.txt
 matrix_dir=/shared/projects/most_kmer/afterkiss/gea/lfmm_rda
 # climfile=/shared/projects/most_kmer/afterkiss/gea/explanatory_wc2.1.csv
-climfile=/shared/projects/most_kmer/afterkiss/bioclim/wc1-4_present_Africa.csv
+climfile=/shared/projects/most_kmer/afterkiss/bioclim/updated_bioclim_AF.csv
 
 ## run the genetic offset for vietnam climate
 # new_env=/shared/projects/most_kmer/afterkiss/bioclim/wc2.1_30s_bioc_MRI-ESM2-0_ssp585_2041-2060_640occ_VN.csv
